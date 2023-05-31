@@ -9,19 +9,34 @@ from PyPDF2 import PdfReader
 import requests
 import boto3
 import json
+import pickle
+import sagemaker
 # Adding LangChain
 from langchain.agents import load_tools, initialize_agent
 from langchain.llms import OpenAI
+from langchain import VectorDBQA
+from langchain.chains import RetrievalQA
+from langchain import FAISS
 from langchain.chains.conversation.memory import ConversationBufferMemory
 # Question Answering over Docs
 from langchain.document_loaders import TextLoader
 from langchain.text_splitter import CharacterTextSplitter
 from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.vectorstores import Chroma
-from langchain import VectorDBQA
 from botocore.exceptions import ClientError
-import sagemaker
-import ai21
+from langchain import PromptTemplate, HuggingFaceHub, LLMChain
+
+# Local chain property
+from chain import get_new_chain1
+
+# BabyAGI
+from babyagi import Optional, BabyAGI
+#from langchain import OpenAI
+#from langchain.vectorstores import FAISS
+from langchain.docstore import InMemoryDocstore
+#from langchain.embeddings import OpenAIEmbeddings
+import faiss
+
 
 # Create a SageMaker session
 sagemaker_session = sagemaker.Session()
@@ -35,7 +50,6 @@ hf_api_token = os.environ.get('hf_api_token')
 serp_api_token = os.environ.get('serp_api_token')
 wolframalpha_api_token = os.environ.get('wolframalpha_api_token')
 stabilityai_api_token = os.environ.get('stabilityai_api')
-ai21.api_key = os.environ.get('ai21_api_token')
 
 
 #p = pipeline("automatic-speech-recognition", use_auth_token=access_token)
@@ -51,6 +65,7 @@ s3_client = boto3.client('s3')
 langchain_llm = OpenAI(temperature=0, model='text-davinci-003', openai_api_key=openai.api_key)
 langchain_memory = ConversationBufferMemory(memory_key="chat_history")
 #langchain_agent = initialize_agent(tools, langchain_llm, agent="conversational-react-description", memory=memory, verbose=True)
+output_file = '/tmp/textract_pdf_2_text.txt'
 
 
 # Define function needed for Bedrock
@@ -82,10 +97,10 @@ def get_key_from_credential_file(user, key_name, credential_file_path):
 
 aws_access_key_id = get_key_from_credential_file('qa', 'aws_access_key_id', '/home/alfred/.aws/credentials')
 aws_secret_access_key = get_key_from_credential_file('qa', 'aws_secret_access_key', '/home/alfred/.aws/credentials')
-#bedrock_model_arn = "arn:aws:amazon-bedrock::aws:built-in-model/bedrock-large-01"
-#bedrock_url = 'https://amazo-loadb-10wvy7j77n07w-1803419470.us-east-1.elb.amazonaws.com/'
-bedrock_url = 'https://bedrock.us-east-1.amazonaws.com'
 '''
+bedrock_model_arn = "arn:aws:amazon-bedrock::aws:built-in-model/bedrock-large-01"
+bedrock_url = 'https://amazo-loadb-10wvy7j77n07w-1803419470.us-east-1.elb.amazonaws.com/'
+MODEL_IDENTIFIER = "AMAZON.bedrock-text-similarity-embedding-01"
 bedrock_client = boto3.client(
     service_name='sagemakerbedrock',
     region_name='us-east-1',
@@ -94,15 +109,6 @@ bedrock_client = boto3.client(
     endpoint_url=bedrock_url
 )
 '''
-bedrock_client = boto3.client(
-        service_name='bedrock',
-        region_name='us-east-1',
-        #endpoint_url='https://us-east-1.amazon-bedrock.aws.dev',
-        endpoint_url = 'https://bedrock.us-east-1.amazonaws.com',
-        aws_access_key_id=aws_access_key_id,
-        aws_secret_access_key=aws_secret_access_key,
-        )
-
 # Function for openai
 def openai_create(prompt, model_choice):
     if len(prompt)>=4096:
@@ -162,7 +168,10 @@ def openai_asr(audio_file, state, model_choice):
         audio = open(audio_file, "rb")
         transcribe = openai.Audio.transcribe("whisper-1", audio)
         text = transcribe['text']
-        out, state2 = chatgpt_clone(text, state, model_choice)
+        if model_choice == 'dgidp':
+            out, state2 = langchain_idp(text, state, model_choice)
+        else:
+            out, state2 = chatgpt_clone(text, state, model_choice)
         return out, state2
       else:
         return "Wrong audio format", state
@@ -208,6 +217,7 @@ gr.Interface(
 '''
 
 # Bedrock
+'''
 def truncate_list(input_list, stop_token):
     truncated_list = []
     for token in input_list:
@@ -222,10 +232,10 @@ def bedrock(input):
     textGenerationConfig = {
         "maxTokenCount": 658,
         "minTokenCount": 0,
-        "temperature": 0.2,
-        "topP": 0.75,
+        "temperature": 2,
+        "topP": 0.5,
         "beamCount": 2,
-        "topK": 1,
+        "topK": 50,
         "repetitionPenalty": 1,
         "lengthPenalty": 1,
         "noRepeatNgramSize": 0,
@@ -233,6 +243,7 @@ def bedrock(input):
     }
     query_response = bedrock_client.generate_text(inputText=input, modelIdentifier=MODEL_IDENTIFIER, textGenerationConfig=textGenerationConfig)
     return query_response['results'][0]['outputText']
+'''
 
 def titan(input):
     modelId = "amazon.titan-tg1-large"
@@ -249,28 +260,7 @@ def titan(input):
     query_response = bedrock_client.invoke_model(body=body, modelId=modelId, accept=accept, contentType=contentType)
     response_body = json.loads(query_response.get('body').read())
     return response_body.get('results')[0].get('outputText')
-
-# Anthripic Claude
-def claude(input):
-    body = json.dumps({"prompt": input, "max_tokens_to_sample": 2048})
-    modelId = 'anthropic.claude-instant-v1' # change this to use a different version from the model provider
-    accept = 'application/json'
-    contentType = 'application/json'
-
-    response = bedrock.invoke_model(body=body, modelId=modelId, accept=accept, contentType=contentType)
-    response_body = json.loads(response.get('body').read())
-
-    return(response_body.get('completion'))
-
-# AI21
-def j2JumboInstruct(input):
-    body = json.dumps({"prompt": prompt_data})
-    modelId = 'ai21.j2-jumbo-instruct' # change this to use a different version from the model provider
-    accept = 'application/json'
-    contentType = 'application/json'
-    response = bedrock.invoke_model(body=body, modelId=modelId, accept=accept, contentType=contentType)
-    response_body = json.loads(response.get('body').read())
-    return(response_body.get('completions')[0].get('data').get('text'))
+        
 
 # BLOOM
 def query_hf_api(payload):
@@ -350,34 +340,8 @@ def bloom_inference(input_sentence, max_length, sample_or_greedy, seed=42):
         "",
     )
     '''
-# AI21 JURASSIC-2
-def ai21_qna(context, question):
 
-    url = "https://api.ai21.com/studio/v1/experimental/answer"
-    payload = {
-        "context": context,
-        "question": question
-    }
-    headers = {
-        "accept": "application/json",
-        "content-type": "application/json",
-        "Authorization": f'Bearer {ai21.api_key}'
-    }
-
-    response = req.post(url, json=payload, headers=headers)
-    return response.text
-
-def ai21_exe_comp(inp, model_choice):
-    response = ai21.Completion.execute(model=model_choice,
-                                   prompt=inp,
-                                   maxTokens=2048,
-                                   temperature=0.4,
-                                   stopToken=["##"],
-                                   numResults=1)
-
-    return (response['completions'][0]['data']['text'])
-
-# GPT-3.5 N DOTHERS
+# GPT-3.5
 def chatgpt_clone(input, history, model_choice):
     if input != "":
     #  return "", history
@@ -390,16 +354,16 @@ def chatgpt_clone(input, history, model_choice):
         #model_name = 'gpt-3.5-turbo-0301'
         model_name = 'gpt-3.5-turbo'
         output = openai_create(inp, model_name)
-      elif model_choice=="titan":
+      elif model_choice=="bedrock":
           output = titan(inp)
       elif model_choice=="bloom":
           #output = bloom(inp)
           max_length = 128
           sample_or_greedy = 'Greedy'
           output = bloom_inference(inp,  max_length, sample_or_greedy, seed=42)
-      elif model_choice=="jurassic-2":
-          model_name = 'j2-jumbo-instruct'
-          output = ai21_exe_comp(inp, model_name)
+      elif model_choice=="gpt-4":
+          model_name = 'gpt-4'
+          output = gpt4(inp, model_name)
       #output = openai_create(inp, model_choice)
       history.append((input, output))
       return history, history
@@ -469,7 +433,7 @@ def langchain_idp(input_str, prompt, history):
 '''
 
 def pdf_2_text(input_pdf_file, history):
-    output_file = '/tmp/textract_pdf_2_text.txt'
+    #output_file = '/tmp/textract_pdf_2_text.txt'
     history = history or []
     key = 'input-pdf-files/{}'.format(os.path.basename(input_pdf_file.name))
     try:
@@ -501,23 +465,90 @@ def pdf_2_text(input_pdf_file, history):
                     output_file_io.write(block['Text'] + '\n')
         with open(output_file, "r") as file:
             first_512_chars = file.read(512).replace("\n", "").replace("\r", "").replace("[", "").replace("]", "") + " [...]"
-        history.append(("", first_512_chars))
+        history.append(("Document conversion", first_512_chars))
         #history = history.append(("", first_512_chars))
         return history, history
 
-def langchain_idp(input_file, query_input, separator, overlap_count, chunk_size, history):
-    output_file = '/tmp/textract_pdf_2_text.txt'
-    if pdf_2_text(input_file, output_file):
-        history = history or []
-        loader = TextLoader(input_file)
-        documents = loader.load()
-        text_splitter = CharacterTextSplitter(separator=separator, chunk_overlap=overlap_count, chunk_size=chunk_size, length_function=len)
-        texts = text_splitter.split_documents(documents)
+def get_faiss_store():
+    with open("docs.pkl", 'rb') as f:
+        faiss_store = pickle.load(f)
+        return faiss_store
+
+
+def langchain_idp(query_input, history, model_choice):
+    separator = '\n'
+    overlap_count = 100
+    chunk_size = 1000
+    history = history or []
+    #if len(texts) > 0 :
+    loader = TextLoader(output_file)
+    documents = loader.load()
+    text_splitter = CharacterTextSplitter(separator=separator, chunk_overlap=overlap_count, chunk_size=chunk_size, length_function=len)
+    texts = text_splitter.split_documents(documents)
+    '''
+    if model_choice=="gpt-3.5":
         embeddings = OpenAIEmbeddings(openai_api_key=openai.api_key)
         docsearch = Chroma.from_documents(texts, embeddings)
+        llm = OpenAI(model_name='text-davinci-003', temperature=0, openai_api_key=openai.api_key)
+        qa_chain = VectorDBQA.from_chain_type(llm=llm, chain_type='stuff', vectorstore=docsearch)
+    '''
+    if  model_choice=="flan-ul2":
+        embeddings = OpenAIEmbeddings(openai_api_key=openai.api_key)
+        vectorstore = get_faiss_store()
+        flan_ul = HuggingFaceHub(repo_id="google/flan-ul2",
+                                model_kwargs={"temperature":0.1, "max_new_tokens":200},
+                                huggingfacehub_api_token=hf_api_token)
+        qa_chain = get_new_chain1(vectorstore, flan_ul, flan_ul, isFlan=True)
+        response = qa_chain.run(query_input)
+    elif model_choice=="flan-t5-xl":
+        template = """Question: {question}
+        Answer: Let's think step by step."""
+        prompt = PromptTemplate(template=template, input_variables=["question"])
+        qa_chain = LLMChain(prompt=prompt, llm=HuggingFaceHub(repo_id="google/flan-t5-xl", model_kwargs={"temperature":0, "max_length":256}, huggingfacehub_api_token=hf_api_token))
+        #response = qa_chain.run(query_input)
+        history.append((query_input, qa_chain.run(query_input)))
+    elif model_choice=="bloom":
+        max_length = 128
+        sample_or_greedy = 'Greedy'
+        history.append((query_input,  bloom_inference(query_input,  max_length, sample_or_greedy, seed=42)))
+    elif model_choice=="bedrock":
+        history.append((query_input, bedrock(query_input)))
+    elif model_choice=="dgidp":
+        embeddings = OpenAIEmbeddings(openai_api_key=openai.api_key)
+        docsearch = Chroma.from_documents(texts, embeddings)
+        #vectordb = FAISS.from_texts(texts, embeddings)
+        llm = OpenAI(model_name='text-davinci-003', temperature=0, openai_api_key=openai.api_key)
+        # :-( llm = OpenAI(model_name='gpt-3.5-turbo', temperature=0, openai_api_key=openai.api_key)
+        qa_chain = VectorDBQA.from_chain_type(llm=llm, chain_type='stuff', vectorstore=docsearch)
+        #qa_chain = RetrievalQA.from_llm(llm=llm, vectorstore=vectordb)
         response = qa_chain({'query': query_input}, return_only_outputs=True)
-        history = history.append((texts[0][:100], response['result']))
-        return history, history
+        history.append((query_input, response['result']))
+    elif model_choice=="babyagi":
+        # Define your embedding model
+        embeddings_model = OpenAIEmbeddings(openai_api_key=openai.api_key)
+        # Initialize the vectorstore as empty
+        embedding_size = 1536
+        index = faiss.IndexFlatL2(embedding_size)
+        vectorstore = FAISS(embeddings_model.embed_query, index, InMemoryDocstore({}), {})
+        llm = OpenAI(temperature=0, openai_api_key=openai.api_key)
+        # Logging of LLMChains
+        verbose = False
+        # If None, will keep on going forever
+        max_iterations: Optional[int] = 1
+        baby_agi = BabyAGI.from_llm(
+            llm=llm, vectorstore=vectorstore, verbose=verbose, max_iterations=max_iterations
+        )
+        response = baby_agi({"objective": query_input})
+        history.append((query_input, response))
+
+    elif model_choice=="gpt-3.5":
+        model_name = 'gpt-3.5-turbo'
+        history.append((query_input, openai_create(query_input, model_name)))
+    else:
+        history.append((query_input, "Not implemented"))
+    #response = qa_chain({'query': query_input}, return_only_outputs=True)
+    #history.append((query_input, response['result']))
+    return history, history
         
 
     
@@ -538,30 +569,27 @@ custom_css = """
 }
 """
 
-#
-# Gradio
-#
 with block:
     gr.HTML(
         f"""
           <div class="main-div">
             <div>
                <header>
-               <h2>Chatbot Showdown: Comparing Key Models in the Industry</h2>
+               <h2>Dialogue Guided Intelligent Document Processing</h2>
                </header>
-               <p>This demo is to compare a few major chatbot models, includein gpt-3.5/4, bloom and bedrock/titan. It supports <u>multilingual text and voice</u> input, as well as <u>single-page</u> documents in PDF, PNG, JPG, or TIFF format.</p>
+               <p>Dialogue Guided Intelligent Document Processing (DGIDP) is an innovative approach to extracting and processing information from documents by leveraging natural language understanding and conversational AI. This technique allows users to interact with the IDP system using human-like conversations, asking questions, and receiving relevant information in real-time. The system is designed to understand context, process unstructured data, and respond to user queries effectively and efficiently.</p> <p>While the text or voice chat accepts all major languages, the document upload feature only accepts files in English, German, French, Spanish, Italian, and Portuguese. The demo supports <u>multilingual text and voice</u> input, as well as <u>multi-page</u> documents in PDF, PNG, JPG, or TIFF format.</p>
             </div>
             <a href="https://www.buymeacoffee.com/alfredcs" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" height="32px" width="108px" alt="Buy Me A Coffee"></a>
             <br>
           </div>
         """
     )
-    model_choice = gr.Dropdown(choices=["titan", "gpt-3.5", "bloom", "jurassic-2", "claude"], label="Model selection", value="titan")
+    model_choice = gr.Dropdown(choices=["dgidp", "gpt-3.5", "babyagi", "bedrock", "bloom", "llama", "flan-t5-xl", "gpt4all", "gpt-4 (coming soon)"], label="Model selection", value="dgidp")
     gr.HTML(f"""<hr style="color:blue>""")
     #file1 = gr.File(file_count="single")
     #upload = gr.Button("OCR")
     gr.HTML(f"""<hr style="color:blue>""")
-    chatbot = gr.Chatbot(elem_id="chat-message", label="Chat").style(height=1000)
+    chatbot = gr.Chatbot(elem_id="chat-message", label="Chat").style(height=1750)
     #message = gr.Textbox(placeholder=prompt, lines=1)
     #audio = gr.Audio(source="microphone", type="filepath", show_label=True,height=550)
     #file1 = gr.File(file_count="single")
@@ -587,11 +615,10 @@ with block:
     #display_image = gr.Interface(fn=show_image, inputs=file1, outputs=file1_output, title="File Upload and Image Display")
     upload = gr.Button("Transcribe")
     state = gr.State()
-    textChat.click(chatgpt_clone, inputs=[message, state, model_choice], outputs=[chatbot, state])
+    #textChat.click(chatgpt_clone, inputs=[message, state, model_choice], outputs=[chatbot, state])
+    textChat.click(langchain_idp, inputs=[message, state, model_choice], outputs=[chatbot, state])
     voiceChat.click(openai_asr, inputs=[audio, state, model_choice], outputs=[chatbot, state])
-    #upload.click(pdf_2_text, inputs=[file1, state], outputs=[chatbot, state])
-    upload.click(ocr_aws, inputs=[file1, state], outputs=[chatbot, state])
+    upload.click(pdf_2_text, inputs=[file1, state], outputs=[chatbot, state])
     #clear.click()
 
-block.launch(ssl_keyfile="/home/alfred/codes/nlp/demo/cavatar.key", ssl_certfile="/home/alfred/codes/nlp/demo/cavatar.pem", debug=True, server_name="0.0.0.0", server_port=7860, height=2048, share=False, auth=("demo", "bedrock23"))
-#block.launch(debug=True, server_name="0.0.0.0", server_port=7860, height=2048, share=False, auth=("demo", "bedrock23"))
+block.launch(ssl_keyfile="/home/alfred/codes/nlp/demo/cavatar.key", ssl_certfile="/home/alfred/codes/nlp/demo/cavatar.pem", debug=True, server_name="0.0.0.0", server_port=7861, height=2048, share=False, auth=("idpdemo", "bedrock2023"))
