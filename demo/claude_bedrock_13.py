@@ -21,7 +21,7 @@ from langchain.tools import DuckDuckGoSearchRun
 from langchain.tools import DuckDuckGoSearchResults
 from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
 from langchain_community.chat_models import BedrockChat
-from langchain.agents import initialize_agent, AgentType
+from langchain.agents import initialize_agent, AgentType, load_tools
 #from langchain import FewShotPromptTemplate
 
 ## Rewrite
@@ -477,16 +477,19 @@ def bedrock_textGen_agent(model_id, prompt, max_tokens, temperature, top_p, top_
     )
 
     ## Using Dickduckgo as search engine
-    wrapper = DuckDuckGoSearchAPIWrapper(region="wt-wt", safesearch='Moderate', time=None, max_results=3)
-    duckduckgo_search = DuckDuckGoSearchRun()
-    duckduckgo_tool = DuckDuckGoSearchResults()
+    #wrapper = DuckDuckGoSearchAPIWrapper(region="wt-wt", safesearch='Moderate', time=None, max_results=3)
+    #duckduckgo_search = DuckDuckGoSearchRun()
+    #duckduckgo_tool = DuckDuckGoSearchResults()
+    #Use serp search
+    serp_tools = load_tools(["serpapi"], serpapi_api_key=os.getenv('serp_api_token'))
 
     # initialize the agent
     agent_chain = initialize_agent(
-        [duckduckgo_tool],
+        #[duckduckgo_tool],
+        serp_tools,
         textgen_llm,
         agent=AgentType.STRUCTURED_CHAT_ZERO_SHOT_REACT_DESCRIPTION,
-        verbose=True,
+        verbose=False,
     )
 
     # run the agent
