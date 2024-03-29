@@ -10,16 +10,26 @@ from langchain_community.chat_models import BedrockChat
 from langchain import hub
 from langchain_community.llms.bedrock import Bedrock
 from langchain.text_splitter import CharacterTextSplitter
-from langchain.memory import ConversationBufferMemory
+
+from langchain.chains import ConversationChain
+from langchain.memory import ConversationBufferWindowMemory, ConversationBufferMemory
+from langchain.prompts.chat import ChatPromptTemplate, MessagesPlaceholder, HumanMessagePromptTemplate
+from langchain_community.chat_message_histories import StreamlitChatMessageHistory
+from langchain.callbacks.base import BaseCallbackHandler
+
 from langchain.chains import ConversationalRetrievalChain
-from langchain_core.prompts import ChatPromptTemplate
+#from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
-import sys, os, json, boto3, botocore, time
+import sys, os, json, boto3, botocore, time, csv
 from readabilipy import simple_json_from_html_string # Required to parse HTML to pure text
 #from langchain.schema import Document # Required to create a Document object
 from opensearchpy import OpenSearch, RequestsHttpConnection, AWSV4SignerAuth
-from langchain.vectorstores import OpenSearchVectorSearch
+#from langchain.vectorstores import OpenSearchVectorSearch
+from langchain_community.vectorstores import OpenSearchVectorSearch
+from sklearn.metrics.pairwise import cosine_similarity
+import pandas as pd
+
 
 
 #----------- Parse out web content -----------
@@ -192,7 +202,7 @@ class healthSearcher:
         return document
     
 #--- Configure Bedrock -----
-def config_bedrock(embedding_model_id, model_id, max_tokens, temperature, top_p, top_k, stop_sequences: list='["\n\nHuman"]'):
+def config_bedrock(embedding_model_id, model_id, max_tokens, temperature, top_p, top_k):
     bedrock_client = boto3.client('bedrock-runtime')
     embedding_bedrock = BedrockEmbeddings(client=bedrock_client, model_id=embedding_model_id)
     model_kwargs =  { 
@@ -200,11 +210,10 @@ def config_bedrock(embedding_model_id, model_id, max_tokens, temperature, top_p,
         "temperature": temperature,
         "top_k": top_k,
         "top_p": top_p,
-        "stop_sequences": stop_sequences,
+        "stop_sequences": ["\n\nHuman"],
     }
     chat = BedrockChat(
         model_id=model_id, client=bedrock_client, model_kwargs=model_kwargs
-        #model_id="anthropic.claude-3-sonnet-20240229-v1:0", client=bedrock_client, model_kwargs=model_kwargs
     )
     #llm = Bedrock(
     #    model_id=model_id, client=bedrock_client, model_kwargs=model_kwargs
@@ -365,6 +374,35 @@ def search_aoss(query: str, index_name: str, host:str, bedrock_embeddings, top_k
 
 
 #--- Basic chain ---
+def bedrock_claude3_chain(query: str, docs:str, chat):
+    '''
+    messages = [
+        ("system", "You are a great question and answer assistance."),
+        ("human", "{question}"),
+    ]
+    
+    prompt = ChatPromptTemplate.from_messages(messages)
+    
+    chain = prompt | chat | StrOutputParser()
+    
+    # Chain Invoke
+    return chain.invoke({"question": query})
+    '''
+    
+    # Decomposition
+    template = """You are an AI assistant designed to provide accurate and truthful responses to questions. \n
+        Your responses should be based on the provided {context} information and directly address the specific {question} asked. \n
+        Your goal is to offer precise and reliable answers to the best of your abilities using the given {context}. \n\n
+        AI:"""
+    prompt_decomposition = ChatPromptTemplate.from_template(template)
+    # Chain
+    generate_queries_decomposition = ( prompt_decomposition | chat | StrOutputParser() | (lambda x: x.split("\n")))
+    
+    # Run
+    answer = generate_queries_decomposition.invoke({"context": docs, "question":query})
+    return answer
+  
+
 def basic_chain(query: str, index_name, aoss_host, llm_chat, bedrock_embeddings):
     prompt_template = hub.pull("rlm/rag-prompt")
     credentials = boto3.Session().get_credentials()
@@ -397,7 +435,7 @@ def basic_chain(query: str, index_name, aoss_host, llm_chat, bedrock_embeddings)
 
 
 #---- Conversational Chain ----
-def conversational_chain(prompt: str, index_name, host, llm_chat, bedrock_embeddings):
+def conversational_chain(query: str, index_name, host, llm_chat, bedrock_embeddings):
     memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
     credentials = boto3.Session().get_credentials()
     auth = AWSV4SignerAuth(credentials, os.environ.get("AWS_DEFAULT_REGION", None), "aoss")
@@ -420,9 +458,14 @@ def conversational_chain(prompt: str, index_name, host, llm_chat, bedrock_embedd
     #    llm_chat, retriever, memory=memory, verbose=False
     #)
     #prompt_template = ChatPromptTemplate.from_template("Answer questions based on the context below: {context} / Question: {question}")
-    prompt_template = f"Answer questions based on the context below: {context} / Question: {question}. \n\n  AI:"
-    chain = ({"context": retriever, "question": RunnablePassthrough()} | prompt_template | llm_chat | StrOutputParser())
-    return chain.invoke(prompt)
+    #prompt_template = f"Answer questions based on the context below: {context} / Question: {question}. \n\n  AI:"
+    messages = [
+        ("system", "Answer questions based on the {context}"),
+        ("human", "{question}"),
+    ]
+    prompt = ChatPromptTemplate.from_messages(messages)
+    chain = ({"context": retriever, "question": RunnablePassthrough()} | prompt | llm_chat | StrOutputParser())
+    return chain.invoke(query)
 
 
 
@@ -485,6 +528,70 @@ def classify_query(query, classes: str, modelId: str):
         print(f"Error classifying query: {e}")
         return "Error"
 
+#--- Text semantic similarity check and cache ----
+def get_text_embedding(image_base64=None, text_description=None,  embd_model_id:str="amazon.titan-embed-image-v1"):
+    input_data = {}
+    bedrock_client = boto3.client('bedrock-runtime')
+    
+    if image_base64 is not None:
+        input_data["inputImage"] = image_base64
+    if text_description is not None:
+        input_data["inputText"] = text_description
+
+    if not input_data:
+        raise ValueError("At least one of image_base64 or text_description must be provided")
+
+    body = json.dumps(input_data)
+
+    response = bedrock_client.invoke_model(
+        body=body,
+        modelId=embd_model_id,
+        accept="application/json",
+        contentType="application/json"
+    )
+
+    response_body = json.loads(response.get("body").read())
+    return response_body.get("embedding")
+    
+def check_and_cache_string(input_string:str, SIMILARITY_THRESHOLD:float, cache_file:str, embd_model_id:str="amazon.titan-embed-image-v1"):
+    """
+    Check if the input string is semantically similar to any string in the cached list.
+    If not, append the input string to the cached list.
+    """
+    vectors = []
+    cached_strings = []
+    with open(cache_file, 'r') as file:
+        # Create a CSV reader object
+        reader = csv.reader(file)
+        # Iterate over each row in the CSV file
+        for row in reader:
+            cached_strings.append(row)
+            vector_str = row[1].strip('[]')  # Remove the square brackets
+            vector_values = [float(x) for x in vector_str.split(',')]
+            vectors.append((vector_values))
+    
+    #df = pd.read_csv(cache_file)
+    # Encode the input string
+    input_embedding = get_text_embedding(text_description=input_string,  embd_model_id=embd_model_id)
+    if len(vectors) > 0 :
+        cosine_scores = cosine_similarity([input_embedding], vectors)[0]
+        df_scores = pd.Series(cosine_scores)
+        sorted_scores = df_scores.sort_values(ascending=False)
+        histories = sorted_scores[sorted_scores >= SIMILARITY_THRESHOLD]
+        if len(histories) > 0 :
+            print(f"'{input_string}' is semantically similar to a record in the cache history with cosine {cosine_scores}")
+            return False
+
+    # If no similar string found, append the input string to the cached list
+    cached_strings.append((input_string, input_embedding))
+    print(f"'{input_string}' added to the cached list")
+    with open(cache_file, 'w', newline='') as file:
+        writer = csv.writer(file)
+        # Write each row of the list to the CSV file
+        for row in cached_strings:
+            writer.writerow(row)
+
+    return True
 
 #--- Main ---
 
@@ -494,48 +601,59 @@ if __name__ == "__main__":
     aoss_image_index_name = "mmrag-image-index"
     os.environ["AWS_DEFAULT_REGION"] = 'us-west-2'
     modelId = 'anthropic.claude-3-haiku-20240307-v1:0'
+    #modelId = "anthropic.claude-3-sonnet-20240229-v1:0"
+    #modelId = "anthropic.claude-v2:1"
     titan_image_embedding = "amazon.titan-embed-image-v1"
     titan_text_embedding = "amazon.titan-embed-g1-text-02"
-    embedding_model_id  = ""
 
+    # Create document from query
+    #query = "What is the difference beyween MoE and Mamba for LLM models?"
+    query = "Who own the ship which caused the Key bridage collapse accident in Baltimore? What is the company's safty track record?"
+    #query = "Did NTSB conclude the root cause of the Key bridage collapse accident in Baltimore?"
+    #query = "COVID-19 vaccine side effects"
+
+    # Read cache search history
+    cache_file = "/home/alfred/data/search_cache.csv"
+    # Define the similarity threshold
+    SIMILARITY_THRESHOLD = 0.7  
+    # Initialize the cached list
+    status = check_and_cache_string(query, SIMILARITY_THRESHOLD, cache_file, embd_model_id=titan_text_embedding)
+
+    
     # Configure Bedrock LLM and Chat
     chat, embd = config_bedrock(titan_text_embedding, modelId, max_tokens=100000, temperature=0.01, top_p=0.95, top_k=250)
 
-    # Create document from query
-    query = "What is the difference beyween MoE and Mamba for LLM models?"
-    query = "How many casualities had been confirmed in the Key bridage collapse accident in Baltimore?"
-    #query = "COVID-19 vaccine side effects"
-
     # Get AOSS host string
     aoss_host = create_aoss(aoss_collection_name)
-    print(aoss_host)
+    #print(aoss_host)
 
-    '''
-    # Text classification
-    classes = "Technology, Health, News"
-    classification = classify_query(query, classes, modelId)
-    if 'technology' in classification.lower():
-        searcher = arxivSearcher()
-        documents = arxiv_searcher.search_and_convert(query)
-    elif "health" in classification.lower():
-        searcher = healthSearcher()
-        documents = searcher.create_document(query)
-    else:
-        searcher = newsSearcher()
-        documents = searcher.search(query)
-
-    # Insert into AOSS
-    docsearcher = insert_text_aoss(documents,embd, aoss_host, aoss_text_index_name)
-    '''
+    # If new query or not data in AOSS then search and inert
+    if status:
+        # Text classification
+        classes = "Technology, Health, News"
+        classification = classify_query(query, classes, modelId)
+        if 'technology' in classification.lower():
+            searcher = arxivSearcher()
+            documents = searcher.search_and_convert(query)
+        elif "health" in classification.lower():
+            searcher = healthSearcher()
+            documents = searcher.create_document(query)
+        else:
+            searcher = newsSearcher()
+            documents = searcher.search(query)
+    
+        # Insert into AOSS
+        docsearcher = insert_text_aoss(documents,embd, aoss_host, aoss_text_index_name)
 
     # Query from AOSS
-    results = search_aoss(query, aoss_text_index_name, aoss_host, embd, top_k=3)
-    print(results)
+    docs = search_aoss(query, aoss_text_index_name, aoss_host, embd, top_k=3)
+    #print(docs)
 
     # Query using conversational chain
+    results = bedrock_claude3_chain(query, docs, chat)
     #results = conversational_chain(query, aoss_text_index_name, aoss_host, chat, embd)
     #results = basic_chain(query, aoss_text_index_name, aoss_host, chat, embd)
-    #print(results)
+    print(results)
     
     
     
