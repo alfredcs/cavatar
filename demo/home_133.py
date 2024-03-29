@@ -23,11 +23,13 @@ from multiprocessing.pool import ThreadPool
 import concurrent.futures
 
 
-module_path = ".."
-sys.path.append(os.path.abspath(module_path))
+module_paths = ["..", "./configs"]
+for module_path in module_paths:
+    sys.path.append(os.path.abspath(module_path))
 from claude_bedrock_133 import bedrock_textGen, bedrock_llm, bedrock_imageGen, bedrock_textGen_agent, prompt_rewrite, bedrock_get_img_description, bedrock_get_img_description2
 from rad_tools_13 import *
 from mmrag_tools_133 import *
+from perplexity_tools_133 import *
 
 
 from utils.gemini_generative_models import _GenerativeModel as GenerativeModel
@@ -61,6 +63,12 @@ memory = ConversationBufferMemory(
     return_messages=True, output_key="answer", input_key="question"  
 )
 
+## Empty a search cache file
+cache_file = "/home/alfred/data/search_cache.csv"
+with open(cache_file, "w") as file:
+    # Write an empty string to clear the file contents
+    file.write("")
+    
 ## Image generation prompt rewrite
 prefix = "Your role as an expert prompt engineer involves accuratly and meticulously rewriting the input text without altering original meaning, transforming it into a precised, detailed and enriched text prompt. This refined prompt is destined for a text-to-image generation model. Your primary objective is to strickly and precisely maintain the key elements and core semantic essence of the original text while infusing it with rich, descriptive elements. Such detailed guidance is crucial for steering the image generation model towards producing images of superior quality, characterized by their vivid and expressive visual nature. Your adeptness in prompt crafting is instrumental in ensuring that the final images not only captivate visually but also resonate deeply with the original textual concept. Please rewrite this prompt: "
 
@@ -145,7 +153,7 @@ with st.sidebar:
     #candidate_count = st.number_input("Number of generated responses to return", min_value=1, value=1)
     stop_sequences = st.text_input("The set of character sequences (up to 5) that will stop output generation", value="\n\n\n")
     gen_config = genai.types.GenerationConfig(max_output_tokens=max_token,temperature=temperature, top_p=top_p, top_k=top_k) #, candidate_count=candidate_count, stop_sequences=stop_sequences)
-    text_embedding_option = st.selectbox('Choose Embedding Model',('titan', 'openai', 'hf-tei'))
+    text_embedding_option = st.selectbox('Choose Embedding Model',('titan', 'tian-image', 'openai', 'hf-tei'))
     st.write("------- Image Generation----------")
     image_n = st.number_input("Choose number of images", min_value=1, value=1, max_value=1)
     image_size = st.selectbox('Choose image size (wxh)', ('512x512', '1024x1024', '768x1024'))
@@ -153,6 +161,16 @@ with st.sidebar:
     cfg =  st.number_input("Choose CFG Scale for freedom", min_value=1.0, value=7.5, max_value=15.0)
     seed = st.slider('Choose seed for noise pattern', -1, 214783647, 452345)
 
+    # --- Perplexity query -----#
+    st.divider()
+    st.header(':green[Perplexity] :confused:')
+    #perplexity_on = st.toggle('Activate Perplexity query')
+    perplexity_on = st.select_slider(
+        'Activate Perplexity query',
+        value='Naive',
+        options=['Naive', 'Text', 'Multimodal(TBA)'])
+
+    #----- RAG ----#
     st.divider()
     st.header(':green[Multimodal RAG] :file_folder:')
     upload_docs = st.file_uploader("Upload pdf files", accept_multiple_files=True, type=['pdf'])
@@ -199,6 +217,7 @@ with st.sidebar:
     st.caption('Only tested with Claude 3')
     rag_on = st.toggle('Activate RAG retrival')
     
+     #----- Image ----#
     st.divider()
     st.header(':green[Image Understanding] :camera:')
     upload_images = st.file_uploader("Upload your Images Here", accept_multiple_files=True, type=['jpg', 'png', 'pdf'])
@@ -231,6 +250,7 @@ with st.sidebar:
         #image22 = Image.open(io.BytesIO(bytes_data))
         st.image(image2)
 
+    #---- Video -----#
     st.divider()
     st.header(':green[Video Understanding] :video_camera:')
     upload_video = st.file_uploader("Upload your video Here", accept_multiple_files=False, type=['mp4'])
@@ -253,23 +273,9 @@ with st.sidebar:
             mime_type="video/mp4",
         )
         st.video(video_bytes)
+    
+    # --- Audio query -----#
     st.divider()
-    # --- Perplexity query -----#
-    st.header(':green[Perplexity] :confused:')
-    #perplexity_on = st.toggle('Activate Perplexity query')
-    perplexity_on = st.select_slider(
-        'Activate Perplexity query',
-        options=['Naive', 'Search', 'Multimodal'])
-    st.divider()
-    #st.header(':green[Audio understanding] :microphone:')
-    #sample_audio = st.file_uploader("Upload a sample audio file for cloning", type=["mp3", "wav"], accept_multiple_files=False)
-    #if sample_audio:
-    #    sample_audio_bytes = sample_audio.read()
-    #    st.audio(sample_audio_bytes, format="audio/wav")#, start_time=0, *, sample_rate=None)
-    ##st.caption('Multilingual transcribe')
-    ##record_audio=mic_recorder(start_prompt="▶️ ", stop_prompt="⏹️" ,key='recorder')
-
-    #st.divider()
     st.header(':green[Enable Agent with voice]')# :microphone:')
     #record_audio=audiorecorder(start_prompt="Voice input start:  ▶️ ", stop_prompt="Record stop: ⏹️", pause_prompt="", key=None)
     record_audio_bytes = audiorecorder(icon_name="fa-solid fa-microphone-slash", recording_color="#cc0000", neutral_color="#666666",icon_size="2x",)
@@ -447,31 +453,46 @@ elif rag_on:
             if len(images) > 0:
                 for img_path in images:
                     image_data = Image.open(img_path[0])
-                    st.image(image_data, caption=f"Source: {img_path[1]}")
+                    st.image(image_data, width=500, caption=f"Source: {img_path[1]}")
 
-elif perplexity_on:
+elif 'naive' not in perplexity_on.lower():
     if prompt := st.chat_input(placeholder=voice_prompt, on_submit=None, key="user_input"):
         prompt=voice_prompt if prompt==' ' else prompt
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.chat_message("user").write(prompt)
         #try:
-        if "anthropic.claude" in option.lower() :
-            msg=bedrock_textGen_perplexity(option, prompt, max_token, temperature, top_p, top_k, stop_sequences)
-        elif option == "gemini-pro":
-            response=st.session_state.chat.send_message(prompt,stream=True,generation_config = gen_config)
-            response.resolve()
-            msg=response.text
-        elif option == "gpt-4-1106-preview":
-            msg=textGen_agent(option, prompt, max_token, temperature, top_p)
+        if text_embedding_option == 'titan':
+            embd_model_id = "amazon.titan-embed-g1-text-02"
+            text_embedding = BedrockEmbeddings(client=boto3_bedrock, model_id=embd_model_id)
+        elif  text_embedding_option == 'titan-image':
+            embd_model_id = "amazon.titan-embed-image-v1"
+        elif text_embedding_option == 'openai':
+            text_embedding =  OpenAIEmbeddings(openai_api_key=os.getenv('openai_api_token'))
+        elif text_embedding_option == 'hf-tei':
+                     ext_embedding = HuggingFaceHubEmbeddings(model='http://infs.cavatar.info:8084')
+            
+        if "anthropic.claude" in option.lower() and 'text' in perplexity_on.lower():
+            msg,_=bedrock_textGen_perplexity(option, prompt, max_token, temperature, top_p, top_k, stop_sequences, embd_model_id)
+        elif "anthropic.claude" in option.lower() and 'multimodal' in perplexity_on.lower():
+            msg= bedrock_imageGen_perplexity(option, prompt, max_token, temperature, top_p, top_k, stop_sequences, embd_model_id)
+            #images= 
         else:
             msg = "Please choose a correct model."
         #except:
         #    msg = "Server error encountered. Please try again later."
         #    pass
-        msg += "\n\n✒︎Content created by using: LangChain Agent and " + option
+        msg += "\n\n✒︎Content created by using: Perplexity query with " + option
         st.session_state.messages.append({"role": "assistant", "content": msg})
-        st.chat_message("ai", avatar='🎙️').write(msg)
-    
+        st.chat_message("ai", avatar='🤔').write(msg)
+        #images = top_2_images(prompt, df_pers_dir, embd_model_id=embd_model_id)
+        images = ['./images/under_construct.jpg, https://t3.ftcdn.net/jpg/03/53/83/92/360_F_353839266_8yqhN0548cGxrl4VOxngsiJzDgrDHxjG.jpg']
+        if len(images) > 0:
+            for img_path in images:
+                image_data = Image.open(img_path.split(',')[0])
+                left_co, cent_co,last_co = st.columns(3)
+                with cent_co:
+                    st.image(image_data, width=400, caption=f"Source: {img_path.split(',')[1]}")
+               
 
 #elif (record_audio and len(voice_prompt) > 1):
 elif (record_audio_bytes and len(voice_prompt) > 1):

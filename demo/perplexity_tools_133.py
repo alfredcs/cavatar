@@ -8,6 +8,7 @@ from langchain_community.embeddings import BedrockEmbeddings
 from langchain_community.chat_models import BedrockChat
 #from langchain.llms.bedrock import Bedrock
 from langchain import hub
+from operator import itemgetter
 from langchain_community.llms.bedrock import Bedrock
 from langchain.text_splitter import CharacterTextSplitter
 
@@ -19,7 +20,7 @@ from langchain.callbacks.base import BaseCallbackHandler
 
 from langchain.chains import ConversationalRetrievalChain
 #from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnablePassthrough
+from langchain_core.runnables import RunnableLambda, RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 import sys, os, json, boto3, botocore, time, csv
 from readabilipy import simple_json_from_html_string # Required to parse HTML to pure text
@@ -29,6 +30,7 @@ from opensearchpy import OpenSearch, RequestsHttpConnection, AWSV4SignerAuth
 from langchain_community.vectorstores import OpenSearchVectorSearch
 from sklearn.metrics.pairwise import cosine_similarity
 import pandas as pd
+from multiprocessing.pool import ThreadPool
 
 
 
@@ -54,7 +56,7 @@ class newsSearcher:
         bing_urls = self.search_bing(query, count)
         combined_urls = google_urls + bing_urls
         urls = list(set(combined_urls))  # Remove duplicates
-        return [scrape_and_parse(f) for f in urls] # Scrape and parse all the url
+        return [scrape_and_parse(f) for f in urls], urls # Scrape and parse all the url
 
     def search_goog(self, query, count):
         #response = requests.get(f"https://www.google.com/search?q={query}") # Make the request
@@ -390,9 +392,10 @@ def bedrock_claude3_chain(query: str, docs:str, chat):
     '''
     
     # Decomposition
-    template = """You are an AI assistant designed to provide accurate and truthful responses to questions. \n
-        Your responses should be based on the provided {context} information and directly address the specific {question} asked. \n
-        Your goal is to offer precise and reliable answers to the best of your abilities using the given {context}. \n\n
+    template = """You are an AI assistant designed to provide comprehensive answers to the best of your abilities. \n
+        Your responses should be based on the provided {context} information and address the specific {question}. \n
+        Your answer should include any corresponding source urls in hyperlink format. \n
+        Please avoid repeating the question in your answer.\n\n 
         AI:"""
     prompt_decomposition = ChatPromptTemplate.from_template(template)
     # Chain
@@ -437,6 +440,8 @@ def basic_chain(query: str, index_name, aoss_host, llm_chat, bedrock_embeddings)
 #---- Conversational Chain ----
 def conversational_chain(query: str, index_name, host, llm_chat, bedrock_embeddings):
     memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+    #memory = ConversationBufferMemory(return_messages=True)
+    #memory.load_memory_variables({})
     credentials = boto3.Session().get_credentials()
     auth = AWSV4SignerAuth(credentials, os.environ.get("AWS_DEFAULT_REGION", None), "aoss")
     
@@ -453,18 +458,22 @@ def conversational_chain(query: str, index_name, host, llm_chat, bedrock_embeddi
     )
 
     retriever = docsearch.as_retriever(search_kwargs={"k": 3})
-    print("I am herere !!!!")
     #bot = ConversationalRetrievalChain.from_llm(
     #    llm_chat, retriever, memory=memory, verbose=False
     #)
     #prompt_template = ChatPromptTemplate.from_template("Answer questions based on the context below: {context} / Question: {question}")
     #prompt_template = f"Answer questions based on the context below: {context} / Question: {question}. \n\n  AI:"
     messages = [
-        ("system", "Answer questions based on the {context}"),
+        ("system", """Your are a helpful assistant to provide omprehensive and truthful answers to questions, \n
+                    drawing upon all relevant information contained within the specified in {context}. \n 
+                    You add value by analyzing the situation and offering insights to enrich your answer. \n
+                    Extract the corresponding sources and add the unique, relevant and unaltered URLs in hyperlink format to the end of your answer."""),
+        #MessagesPlaceholder(variable_name="chat_history"),
         ("human", "{question}"),
     ]
     prompt = ChatPromptTemplate.from_messages(messages)
     chain = ({"context": retriever, "question": RunnablePassthrough()} | prompt | llm_chat | StrOutputParser())
+    #chain = ({"context": retriever, "question": RunnablePassthrough(chat_history=RunnableLambda(memory.load_memory_variables) | itemgetter("chat_history"))} | prompt | llm_chat | StrOutputParser())
     return chain.invoke(query)
 
 
@@ -593,6 +602,64 @@ def check_and_cache_string(input_string:str, SIMILARITY_THRESHOLD:float, cache_f
 
     return True
 
+
+#--- Wrappler --
+def bedrock_textGen_perplexity(option, prompt, max_token, temperature, top_p, top_k, stop_sequences, embd_model_id):
+    aoss_collection_name = "mmrag-collection-032024"
+    aoss_text_index_name = "mmrag-text-index"
+    os.environ["AWS_DEFAULT_REGION"] = 'us-west-2'
+    # Read cache search history
+    cache_file = "/home/alfred/data/search_cache.csv"
+    # Define the similarity threshold
+    SIMILARITY_THRESHOLD = 0.75 
+    # Initialize the cached list
+    status = check_and_cache_string(prompt, SIMILARITY_THRESHOLD, cache_file, embd_model_id=embd_model_id)
+    urls = []
+
+    # Configure Bedrock LLM and Chat
+    chat, embd = config_bedrock(embd_model_id, option, max_tokens=max_token, temperature=temperature, top_p=top_p, top_k=top_k)
+
+    # Get AOSS host string
+    aoss_host = create_aoss(aoss_collection_name)
+    #print(aoss_host)
+
+    # If new query or not data in AOSS then search and inert
+    if status:
+        # Text classification
+        classes = "Technology, Health, News"
+        classification = classify_query(prompt, classes, option)
+        if '_technology' in classification.lower():
+            searcher = arxivSearcher()
+            documents = searcher.search_and_convert(option)
+        elif "_health" in classification.lower():
+            searcher = healthSearcher()
+            documents = searcher.create_document(option)
+        else:
+            searcher = newsSearcher()
+            documents, urls = searcher.search(option)
+    
+        # Insert into AOSS
+        docsearcher = insert_text_aoss(documents,embd, aoss_host, aoss_text_index_name)
+
+    # Query using conversational chain
+    results = conversational_chain(prompt, aoss_text_index_name, aoss_host, chat, embd)
+    return results, urls
+
+def bedrock_imageGen_perplexity(option, prompt, max_token, temperature, top_p, top_k, stop_sequences, embd_model_id):
+    aoss_collection_name = "mmrag-collection-032024"
+    aoss_image_index_name = "mmrag-image-index"
+    
+    #get AOSS host address
+    aoss_host = create_aoss(aoss_collection_name)
+
+    # Get the text and urls from the query
+    results, urls = bedrock_textGen_perplexity(option, prompt, max_token, temperature, top_p, top_k, stop_sequences, embd_model_id)
+    pool = ThreadPool(processes=8)
+    #async_result = pool.apply_async(insert_into_chroma, (urls, pdfs, chroma_pers_dir, embd_model_id, 4000, 200, model_id_h, 2048, 0.01, 250, 0.95, df_pers_file))
+    #return_val = async_result.get() 
+
+    return results
+    
 #--- Main ---
 
 if __name__ == "__main__":
@@ -608,14 +675,15 @@ if __name__ == "__main__":
 
     # Create document from query
     #query = "What is the difference beyween MoE and Mamba for LLM models?"
-    query = "Who own the ship which caused the Key bridage collapse accident in Baltimore? What is the company's safty track record?"
+    #query = "Who own the ship which caused the Key bridage collapse accident in Baltimore? What is the company's safty track record?"
     #query = "Did NTSB conclude the root cause of the Key bridage collapse accident in Baltimore?"
-    #query = "COVID-19 vaccine side effects"
+    query = "COVID-19 vaccine side effects"
+    query = "What happened in the musical hall attack in Moscow last week?"
 
     # Read cache search history
     cache_file = "/home/alfred/data/search_cache.csv"
     # Define the similarity threshold
-    SIMILARITY_THRESHOLD = 0.7  
+    SIMILARITY_THRESHOLD = 0.75  
     # Initialize the cached list
     status = check_and_cache_string(query, SIMILARITY_THRESHOLD, cache_file, embd_model_id=titan_text_embedding)
 
@@ -640,7 +708,8 @@ if __name__ == "__main__":
             documents = searcher.create_document(query)
         else:
             searcher = newsSearcher()
-            documents = searcher.search(query)
+            documents, urls = searcher.search(query)
+            print(urls)
     
         # Insert into AOSS
         docsearcher = insert_text_aoss(documents,embd, aoss_host, aoss_text_index_name)
@@ -651,8 +720,10 @@ if __name__ == "__main__":
 
     # Query using conversational chain
     results = bedrock_claude3_chain(query, docs, chat)
-    #results = conversational_chain(query, aoss_text_index_name, aoss_host, chat, embd)
-    #results = basic_chain(query, aoss_text_index_name, aoss_host, chat, embd)
+    print(f"{results}\n ----conversational chain-----\n")
+    results = conversational_chain(query, aoss_text_index_name, aoss_host, chat, embd)
+    print(f"{results}\n ----basic chain-----\n")
+    results = basic_chain(query, aoss_text_index_name, aoss_host, chat, embd)
     print(results)
     
     
