@@ -6,7 +6,6 @@ import typing
 import os
 import sys
 import io
-import time
 from operator import itemgetter
 import google.generativeai as genai
 #from vertexai.preview.generative_models import (GenerativeModel, Part)
@@ -29,7 +28,7 @@ for module_path in module_paths:
     sys.path.append(os.path.abspath(module_path))
 from claude_bedrock_134 import *
 from rad_tools_134 import *
-from mmrag_tools_133 import *
+from mmrag_tools_134 import *
 from perplexity_tools_134 import *
 
 
@@ -133,10 +132,6 @@ def get_asr(audio_filename):
 # ++++++++++++++ Local deployed models with TGI>=1.4 ++++++++++++++++++++++
     
     
-###
-# Streamlist Body
-###
-start_time = time.time()
 
 # Check password
 if not check_password():
@@ -144,7 +139,7 @@ if not check_password():
 
 with st.sidebar:
     st.title(':orange[Multimodal Config] :pencil2:')
-    option = st.selectbox('Choose Model',('anthropic.claude-3-haiku-20240307-v1:0', 'anthropic.claude-3-sonnet-20240229-v1:0', 'anthropic.claude-3-opus-20240229-v1:0', 'anthropic.claude-v2:1', 'mistral.mistral-large-2402-v1:0', 'gemini-1.5-pro-preview-0514', 'gemini-pro-vision', 'gemini-1.5-flash-preview-0514', 'gpt-4o', 'gpt-4-1106-preview', 'gpt-4-vision-preview', 'stability.stable-diffusion-xl-v1:0', 'amazon.titan-image-generator-v1', 'dall-e-3'))
+    option = st.selectbox('Choose Model',('anthropic.claude-3-haiku-20240307-v1:0', 'anthropic.claude-3-sonnet-20240229-v1:0', 'anthropic.claude-3-opus-20240229-v1:0', 'anthropic.claude-v2:1', 'mistral.mistral-large-2402-v1:0', 'gemini-pro', 'gemini-pro-vision', 'gpt-4o', 'gpt-4-1106-preview', 'gpt-4-vision-preview', 'stability.stable-diffusion-xl-v1:0', 'amazon.titan-image-generator-v1', 'dall-e-3'))
 
     if 'model' not in st.session_state or st.session_state.model != option:
         st.session_state.chat = genai.GenerativeModel(option).start_chat(history=[])
@@ -349,7 +344,7 @@ for msg in st.session_state.messages:
 
 #if upload_images or image_url:
 if "Single" in image_on or "Multiple" in image_on:
-    if option != "gemini-pro-vision" and option != "gpt-4-vision-preview" and option != "gemini-1.5-flash-preview-0514" and option != "gpt-4o" and option != 'llava-v1.5-13b-vision' and option != 'stability.stable-diffusion-xl-v1:0' and option != 'amazon.titan-image-generator-v1' and "anthropic.claude-3" not in option:
+    if option != "gemini-pro-vision" and option != "gpt-4-vision-preview" and option != 'llava-v1.5-13b-vision' and option != 'stability.stable-diffusion-xl-v1:0' and option != 'amazon.titan-image-generator-v1' and "anthropic.claude-3" not in option:
         st.info("Please switch to a vision model")
         st.stop()
     if prompt := st.chat_input(placeholder=voice_prompt, on_submit=None, key="user_input"):
@@ -378,10 +373,10 @@ if "Single" in image_on or "Multiple" in image_on:
             elif option == 'llava-v1.5-13b-vision' and image_url:
                 image_prompt = f'({image_url}) {prompt}'
                 msg=tgi_imageGen('http://infs.cavatar.info:8085/generate', image_prompt, max_token, temperature, top_p, top_k)
-            elif option == "gpt-4-vision-preview" or option == "gpt-4o":
+            elif option == "gpt-4-vision-preview":
                 msg = getDescription(option, prompt, image, max_token, temperature, top_p)
                 if "Multiple" in image_on:
-                    msg = getDescription2(option, prompt, image, image2, max_token, temperature, top_p)
+                     msg = getDescription2(option, prompt, image, image2, max_token, temperature, top_p)
             elif option == "amazon.titan-image-generator-v1" or option =='stability.stable-diffusion-xl-v1:0':
                 if record_audio and len(voice_prompt) > 1:
                     new_prompt = tgi_textGen('http://infs.cavatar.info:8080', f'{prefix} {prompt}', max_token, temperature, top_p, top_k)
@@ -405,19 +400,13 @@ if "Single" in image_on or "Multiple" in image_on:
         except:
             msg = "Server error encountered. Please try again later."
             pass
-
-        # estimate tokens from image(s)
-        width, height = Image.open(image).size
-        image_tokens = int((height * width)/750)
-        if "Multiple" in image_on:
-            image_tokens += image_tokens
-        msg += "\n\n✒︎Content created by using: " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {image_tokens}+{estimate_tokens(option, method='max')}, Out: {estimate_tokens(msg, method='max')}"
+        msg += "\n\n✒︎Content created by using: " + option
         st.session_state.chat = genai.GenerativeModel(option).start_chat(history=[])
         st.session_state.messages.append({"role": "assistant", "content": msg})
         
-        st.image(image, width=512)
+        st.image(image)
         if "Multiple" in image_on and upload_image2:
-            st.image(image2, width=512)
+            st.image(image2)
         st.chat_message("assistant", avatar='🌈').write(msg)
 elif video_on:
     if option != "gemini-pro-vision" and option != "gpt-4-vision-preview" and "anthropic.claude-3" not in option:
@@ -426,26 +415,26 @@ elif video_on:
     if prompt := st.chat_input():
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.chat_message("user").write(prompt)
-        #try:
-        if option == "gemini-pro-vision":
-            multimodal_model = GenerativeModel(option)
-            context = [prompt, video]
-            responses = multimodal_model.generate_content(context, stream=True)
-            #response=st.session_state.chat.send_message(context,stream=True,generation_config = gen_config)
-            #response.resolve()
-            for response in responses:
-                msg += response.text
-        elif 'anthropic.claude-3' in option.lower():
-            msg = videoCaptioning_claude(option, prompt, getBase64Frames(video_file_name), max_token, temperature, top_p, top_k)
-        elif option == "gpt-4-vision-preview":
-            msg = videoCaptioning(option, prompt, getBase64Frames(video_file_name), max_token, temperature, top_p)
-        elif option == 'llava-v1.5-13b-vision' and  image_url:
-            image_prompt = f'({image_url}){prompt}'
-            msg=tgi_imageGen('http://infs.cavatar.info:8085/generate', image_prompt, max_token, temperature, top_p, top_k)
-        #except:
-        #    msg = "Server error encountered. Please try again."
-        #    pass
-        msg += "\n\n✒︎Content created by using: " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {estimate_tokens(option, method='max')}, Out: {estimate_tokens(msg, method='max')}"
+        try:
+            if option == "gemini-pro-vision":
+                multimodal_model = GenerativeModel(option)
+                context = [prompt, video]
+                responses = multimodal_model.generate_content(context, stream=True)
+                #response=st.session_state.chat.send_message(context,stream=True,generation_config = gen_config)
+                #response.resolve()
+                for response in responses:
+                    msg += response.text
+            elif 'anthropic.claude-3' in option.lower():
+                msg = videoCaptioning_claude(option, prompt, getBase64Frames(video_file_name), max_token, temperature, top_p)
+            elif option == "gpt-4-vision-preview":
+                msg = videoCaptioning(option, prompt, getBase64Frames(video_file_name), max_token, temperature, top_p)
+            elif option == 'llava-v1.5-13b-vision' and  image_url:
+                image_prompt = f'({image_url}){prompt}'
+                msg=tgi_imageGen('http://infs.cavatar.info:8085/generate', image_prompt, max_token, temperature, top_p, top_k)
+        except:
+            msg = "Server error encountered. Please try again."
+            pass
+        msg += "\n\n✒︎Content created by using: " + option
         st.session_state.chat = genai.GenerativeModel(option).start_chat(history=[])
         st.session_state.messages.append({"role": "assistant", "content": msg})
 
@@ -462,35 +451,35 @@ elif rag_on:
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.chat_message("user").write(prompt)
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            try:
-                if text_embedding_option == 'titan':
-                    embd_model_id = "amazon.titan-embed-image-v1"
-                    text_embedding = BedrockEmbeddings(client=boto3_bedrock, model_id=embd_model_id)
-                elif text_embedding_option == 'openai':
-                    text_embedding =  OpenAIEmbeddings(openai_api_key=os.getenv('openai_api_token'))
-                elif text_embedding_option == 'hf-tei':
-                     ext_embedding = HuggingFaceHubEmbeddings(model='http://infs.cavatar.info:8084')
-    
-                #print(f'RAG:{prompt}, model to use:{option}')
-                #msg = do_query(prompt, option, text_embedding, aoss_host, collection_name, profile_name, max_token, temperature, top_p, top_k, my_region)
-                if voice_prompt:
-                    answer1 = executor.submit(retrieval_from_chroma_fusion, chroma_pers_dir, embd_model_id, prompt.replace("'s ", " "), option, max_token, temperature, top_k, top_p)
-                    #answer2 = executor.submit(top_2_images, prompt, df_pers_dir, embd_model_id="amazon.titan-embed-g1-text-02")
-                    #msg = retrieval_from_chroma_decompose(chroma_pers_dir, text_embedding, prompt, option, max_token, temperature, top_k, top_p)
-                    msg = answer1.result()
-                    #images = answer2.result()
-                else:
-                    #msg = retrieval_from_chroma_fusion(chroma_pers_dir, text_embedding, prompt, option, max_token, temperature, top_k, top_p)
-                    answer1 = executor.submit(retrieval_from_chroma_decompose, chroma_pers_dir, embd_model_id, prompt.replace("'s ", " "), option, max_token, temperature, top_k, top_p)
-                    #answer2 = executor.submit(top_2_images, prompt, df_pers_dir, embd_model_id="amazon.titan-embed-g1-text-02")
-                    #msg = retrieval_from_chroma_decompose(chroma_pers_dir, text_embedding, prompt, option, max_token, temperature, top_k, top_p)
-                    msg = answer1.result()
-                    #images = answer2.result()
-                #msg,_ = do_faiss_query(option, prompt, temperature=temperature, max_tokens=max_token, top_p=top_p)
-            except:
-                msg = "Server error encountered. Please try again."
-                pass
-            msg += "\n\n✒︎Content created by using: RAG with " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {estimate_tokens(option, method='max')}, Out: {estimate_tokens(msg, method='max')}"
+            #try:
+            if text_embedding_option == 'titan':
+                embd_model_id = "amazon.titan-embed-image-v1"
+                text_embedding = BedrockEmbeddings(client=boto3_bedrock, model_id=embd_model_id)
+            elif text_embedding_option == 'openai':
+                text_embedding =  OpenAIEmbeddings(openai_api_key=os.getenv('openai_api_token'))
+            elif text_embedding_option == 'hf-tei':
+                 text_embedding = HuggingFaceHubEmbeddings(model='http://infs.cavatar.info:8084')
+
+            print(f'RAG:{prompt}, model to use:{option}, embeddign model id: {embd_model_id}')
+            #msg = do_query(prompt, option, text_embedding, aoss_host, collection_name, profile_name, max_token, temperature, top_p, top_k, my_region)
+            if voice_prompt:
+                answer1 = executor.submit(retrieval_from_chroma_decompose, chroma_pers_dir, embd_model_id, prompt.replace("'s ", " "), option, max_token, temperature, top_k, top_p)
+                #answer2 = executor.submit(top_2_images, prompt, df_pers_dir, embd_model_id="amazon.titan-embed-g1-text-02")
+                #msg = retrieval_from_chroma_decompose(chroma_pers_dir, text_embedding, prompt, option, max_token, temperature, top_k, top_p)
+                msg = answer1.result()
+                #images = answer2.result()
+            else:
+                #msg = retrieval_from_chroma_fusion(chroma_pers_dir, text_embedding, prompt, option, max_token, temperature, top_k, top_p)
+                answer1 = executor.submit(retrieval_from_chroma_fusion, chroma_pers_dir, embd_model_id, prompt.replace("'s ", " "), option, max_token, temperature, top_k, top_p)
+                #answer2 = executor.submit(top_2_images, prompt, df_pers_dir, embd_model_id="amazon.titan-embed-g1-text-02")
+                #msg = retrieval_from_chroma_decompose(chroma_pers_dir, text_embedding, prompt, option, max_token, temperature, top_k, top_p)
+                msg = answer1.result()
+                #images = answer2.result()
+            #msg,_ = do_faiss_query(option, prompt, temperature=temperature, max_tokens=max_token, top_p=top_p)
+            #except:
+            #    msg = "Server error encountered. Please try again."
+            #    pass
+            msg += "\n\n✒︎Content created by using: RAG with " + option
             st.session_state.chat = genai.GenerativeModel(option).start_chat(history=[])
             st.session_state.messages.append({"role": "assistant", "content": msg})
             st.chat_message("ai", avatar="📄").write(msg)
@@ -498,7 +487,7 @@ elif rag_on:
             if len(images) > 0:
                 for img_path in images:
                     image_data = Image.open(img_path[0])
-                    st.image(image_data, width=768, caption=f"Source: {img_path[1]}")
+                    st.image(image_data, width=500, caption=f"Source: {img_path[1]}")
 
 elif 'naive' not in perplexity_on.lower():
     if prompt := st.chat_input(placeholder=voice_prompt, on_submit=None, key="user_input"):
@@ -545,16 +534,14 @@ elif 'naive' not in perplexity_on.lower():
         #except:
         #    msg = "Server error encountered. Please try again later."
         #    pass
-        msg += "\n\n✒︎Content created by using: Perplexity query with " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {estimate_tokens(option, method='max')}, Out: {estimate_tokens(msg, method='max')}"
+        msg += "\n\n✒︎Content created by using: Perplexity query with " + option
         if "multimodal" in perplexity_on.lower() and image:
-            left_co, cent_co,last_co = st.columns(3)
-            with cent_co:
-                st.image(image, width=512)
+             st.image(image, use_column_width='auto', width=768)
         st.session_state.messages.append({"role": "assistant", "content": msg})
         st.chat_message("ai", avatar='🤔').write(msg)
         #images = top_2_images(prompt, df_pers_dir, embd_model_id=embd_model_id)
         #if "multimodal" in perplexity_on.lower():
-        #     st.image(image, use_column_width='auto', c)
+        #     st.image(image, use_column_width='auto', width=768)
         #    images = ['./images/under_construct.jpg, https://t3.ftcdn.net/jpg/03/53/83/92/360_F.jpg']
         #    if len(images) > 0:
         #        for img_path in images:
@@ -573,7 +560,7 @@ elif voice_on:
         #try:
         if "anthropic.claude" in option.lower() :
             msg=bedrock_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences)
-        elif option == "gemini-1.5-pro-preview-0514":
+        elif option == "gemini-pro":
             response=st.session_state.chat.send_message(prompt,stream=True,generation_config = gen_config)
             response.resolve()
             msg=response.text
@@ -598,7 +585,7 @@ elif voice_on:
         #except:
         #    msg = "Server error encountered. Please try again later."
         #    pass
-        msg += "\n\n✒︎Content created by using: LangChain Agent and " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {estimate_tokens(option, method='max')}, Out: {estimate_tokens(msg, method='max')}"
+        msg += "\n\n✒︎Content created by using: LangChain Agent and " + option
         st.session_state.messages.append({"role": "assistant", "content": msg})
         st.chat_message("ai", avatar='🎙️').write(msg)
 
@@ -607,11 +594,11 @@ else:
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.chat_message("user").write(prompt)
         #try:
-        if "gemini" in option:
+        if option == "gemini-pro":
             response=st.session_state.chat.send_message(prompt,stream=True,generation_config = gen_config)
             response.resolve()
             msg=response.text
-        elif "gpt-4" in option:
+        elif option == "gpt-4-1106-preview":
             msg=textGen(option, prompt, max_token, temperature, top_p)
         elif "anthropic.claude" in option.lower():
             msg=bedrock_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences)
@@ -640,6 +627,6 @@ else:
         #except Exception as err:
         #    msg = "Server error encountered. Please try again later."
         #    pass
-        msg += "\n\n ✒︎Content created by using: " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {estimate_tokens(option, method='max')}, Out: {estimate_tokens(msg, method='max')}"
+        msg += "\n\n ✒︎Content created by using: " + option
         st.session_state.messages.append({"role": "assistant", "content": msg})
         st.chat_message("ai", avatar='🦙').write(msg)
