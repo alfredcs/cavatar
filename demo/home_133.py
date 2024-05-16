@@ -436,7 +436,7 @@ elif video_on:
             for response in responses:
                 msg += response.text
         elif 'anthropic.claude-3' in option.lower():
-            msg = videoCaptioning_claude(option, prompt, getBase64Frames(video_file_name), max_token, temperature, top_p, top_k)
+            msg, video_tokens = videoCaptioning_claude_n(option, prompt, getBase64Frames(video_file_name), max_token, temperature, top_p, top_k)
         elif option == "gpt-4-vision-preview":
             msg = videoCaptioning(option, prompt, getBase64Frames(video_file_name), max_token, temperature, top_p)
         elif option == 'llava-v1.5-13b-vision' and  image_url:
@@ -445,7 +445,7 @@ elif video_on:
         #except:
         #    msg = "Server error encountered. Please try again."
         #    pass
-        msg += "\n\n✒︎Content created by using: " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {estimate_tokens(option, method='max')}, Out: {estimate_tokens(msg, method='max')}"
+        msg += "\n\n✒︎Content created by using: " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {video_tokens}+{estimate_tokens(option, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.chat = genai.GenerativeModel(option).start_chat(history=[])
         st.session_state.messages.append({"role": "assistant", "content": msg})
 
