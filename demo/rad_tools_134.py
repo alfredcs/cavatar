@@ -7,7 +7,9 @@ import typing
 import os
 import sys
 import io
+import random
 import http.client
+import ffmpeg
 from operator import itemgetter
 import google.generativeai as genai
 #from vertexai.preview.generative_models import (GenerativeModel, Part)
@@ -365,15 +367,16 @@ def videoCaptioning_claude(option, prompt, base64Frames, max_token, temperature,
     return video_caption
 
 def videoCaptioning_claude_n(option, prompt, base64Frames, max_token, temperature, top_p, top_k):
-    # Take the first 20 imafes due to Claude 3 limit
-    base64Frames_20 = base64Frames[:20]
+    # Take random 20 images due to Claude 3 limit
+    samples = 20 if len(base64Frames) > 20 else  len(base64Frames)
+    base64Frames_20 = random.sample(base64Frames, samples)
     # Get resolution to compute tokens
     image_bytes = base64.b64decode(base64Frames_20[0])
     # Create a BytesIO object from the decoded image bytes
     image_buffer = BytesIO(image_bytes)
     # Open the image using PIL
     width, height = Image.open(image_buffer).size
-    video_tokens = int((height * width)/750)* len(base64Frames_20)
+    video_tokens = int((height * width)/750)* samples
     
     payload = {
         "modelId": option,
@@ -433,7 +436,7 @@ def getBase64Frames(video_file_name):
 
     return base64Frames
 
-def process_video(video_file_name, seconds_per_frame=2):
+def process_video(video_path, seconds_per_frame=2):
     base64Frames = []
     base_video_path, _ = os.path.splitext(video_path)
 
@@ -455,6 +458,7 @@ def process_video(video_file_name, seconds_per_frame=2):
     video.release()
 
     # Extract audio from video
+    '''
     audio_path = f"{base_video_path}.mp3"
     clip = VideoFileClip(video_path)
     clip.audio.write_audiofile(audio_path, bitrate="32k")
@@ -463,7 +467,17 @@ def process_video(video_file_name, seconds_per_frame=2):
 
     print(f"Extracted {len(base64Frames)} frames")
     print(f"Extracted audio to {audio_path}")
-    return base64Frames, audio_path
+    '''
+    video2 = ffmpeg.input(video_path)
+    audio_file = f"{base_video_path}.mp3"
+    if os.path.exists(audio_file):
+        os.remove(audio_file)
+    # Extract the audio stream
+    audio = video2.audio
+    # Save the audio as an MP3 file
+    ffmpeg.output(audio, audio_file).run()
+    
+    return base64Frames, audio_file
 
 
 # ++++++++++++++ Local deployed models with TGI>=1.4 ++++++++++++++++++++++

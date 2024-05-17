@@ -436,7 +436,16 @@ elif video_on:
             for response in responses:
                 msg += response.text
         elif 'anthropic.claude-3' in option.lower():
-            msg, video_tokens = videoCaptioning_claude_n(option, prompt, getBase64Frames(video_file_name), max_token, temperature, top_p, top_k)
+            #Base64Frames = getBase64Frames(video_file_name)
+            Base64Frames, audio_file = process_video(video_file_name, 1)
+            #audio_transcribe = get_asr(audio_file)
+            #msg, video_tokens = videoCaptioning_claude_n(option, prompt, Base64Frames, max_token, temperature, top_p, top_k)
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                answer1 = executor.submit(get_asr, audio_file)
+                answer2 = executor.submit(videoCaptioning_claude_n, option, prompt, Base64Frames, max_token, temperature, top_p, top_k)
+                audio_transcribe  = answer1.result()
+                msg, video_tokens = answer2.result()
+
         elif option == "gpt-4-vision-preview":
             msg = videoCaptioning(option, prompt, getBase64Frames(video_file_name), max_token, temperature, top_p)
         elif option == 'llava-v1.5-13b-vision' and  image_url:
@@ -445,7 +454,7 @@ elif video_on:
         #except:
         #    msg = "Server error encountered. Please try again."
         #    pass
-        msg += "\n\n✒︎Content created by using: " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {video_tokens}+{estimate_tokens(option, method='max')}, Out: {estimate_tokens(msg, method='max')}"
+        msg += "\n\n Audio transcribe: " + audio_transcribe + "\n\n✒︎Content created by using: " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {video_tokens}+{estimate_tokens(option, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.chat = genai.GenerativeModel(option).start_chat(history=[])
         st.session_state.messages.append({"role": "assistant", "content": msg})
 
