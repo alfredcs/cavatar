@@ -1,0 +1,5 @@
+bs4
+readabilipy
+google-api-python-client
+lxml
+flashrank

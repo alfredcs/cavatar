@@ -1,0 +1,6 @@
+[server]
+sslCertFile = '/home/alfred/utils/cavatar.cer'
+sslKeyFile = '/home/alfred/utils/cavatar.key'
+enableXsrfProtection = false
+enableCORS = false
+password = 'mmrag2024!'

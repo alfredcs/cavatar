@@ -1,0 +1,6 @@
+AOSS_host_name: 2hssfswq7j8e0s1w7xgk.us-west-2.aoss.amazonaws.com:443
+AOSS_index_name: bedrock-sample-index-757
+KB_id: FTQA91C0EF
+DS_id: KAGX2R5UX2
+Region: us-west-2
+S3_bucket_name: bedrock-kb-us-west-2-976939723775
