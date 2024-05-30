@@ -10,12 +10,14 @@ import time
 
 module_paths = ["./", "./configs"]
 file_path = "./data/"
+video_file_name = "uploaded_video.mp4"
 
 for module_path in module_paths:
     sys.path.append(os.path.abspath(module_path))
 
 from utility import *
 from utils import *
+from video_captioning import *
 
 st.set_page_config(page_title="Advanced RAG",page_icon="🩺",layout="wide")
 st.title("Advanced RAG Demo")
@@ -29,15 +31,23 @@ aoss_index = read_key_value(".aoss_config.txt", "AOSS_index_name")
 with st.sidebar:
     #----- RAG  ------ 
     st.header(':green[Search RAG] :file_folder:')
-    rag_search = rag_update = rag_retrieval = False
+    rag_search = rag_update = rag_retrieval = video_caption = False
     rag_on = st.select_slider(
         'Activate RAG',
         value='None',
-        options=['None', 'Search', 'Insert', 'Retrieval'])
+        options=['None', 'Search', 'Video', 'Insert', 'Retrieval'])
     if 'Search' in rag_on:
         doc_num = st.slider('Choose max number of documents', 1, 8, 3)
         embedding_model_id = st.selectbox('Choose Embedding Model',('amazon.titan-embed-g1-text-02', 'amazon.titan-embed-image-v1'))
         rag_search = True
+    elif 'Video' in rag_on:
+        upload_video = st.file_uploader("Upload your video Here", accept_multiple_files=False, type=['mp4'])
+        if upload_video:
+            video_bytes = upload_video.getvalue()
+            with open(video_file_name, 'wb') as f:
+                f.write(video_bytes)
+            st.video(video_bytes)
+        video_caption = True
     elif 'Insert' in rag_on:
         upload_docs = st.file_uploader("Upload your doc here", accept_multiple_files=True, type=['pdf', 'doc', 'jpg', 'png'])
         # Amazon Bedrock KB only supports titan-embed-text-v1 not g1-text-02
@@ -66,7 +76,7 @@ with st.sidebar:
     top_p = st.number_input("Top_p: The cumulative probability cutoff for token selection", min_value=0.1, value=0.85)
     top_k = st.number_input("Top_k: Sample from the k most likely next tokens at each step", min_value=1, value=40)
     #candidate_count = st.number_input("Number of generated responses to return", min_value=1, value=1)
-    stop_sequences = st.text_input("The set of character sequences (up to 5) that will stop output generation", value="\n\nHuman")
+    stop_sequences = st.text_input("The set of character sequences (up to 5) that will stop output generation", value="\n\n\nHuman")
 
     # --- Audio query -----#
     st.divider()
@@ -126,6 +136,26 @@ if rag_search:
         st.session_state.messages.append({"role": "assistant", "content": msg})
         st.chat_message("ai", avatar='🦙').write(msg)
 
+elif video_caption:
+    if "anthropic.claude-3" not in option:
+        st.info("Please switch to a vision model")
+        st.stop()
+    if prompt := st.chat_input():
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        st.chat_message("user").write(prompt)
+        b64frames, audio_file = process_video(video_file_name, seconds_per_frame=2)
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            answer1 = executor.submit(videoCaptioning_claude_nn, option, prompt, b64frames, max_token, temperature, top_p, top_k)
+            answer2 =  executor.submit(get_asr, audio_file)
+            captions, tokens = answer1.result()
+            audio_transcribe = answer2.result()
+    
+        prompt2 = xml_prompt(captions, audio_transcribe, prompt)
+        msg = bedrock_textGen(option, prompt2, max_token, temperature, top_p, top_k, stop_sequences)
+        msg += "\n\n Audio transcribe: " + audio_transcribe + "\n\n ✒︎Content created by using: " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {tokens}+{estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
+        st.session_state.messages.append({"role": "assistant", "content": msg})
+        st.chat_message("ai", avatar='🦙').write(msg)
+    
 elif rag_update:        
     # Update AOSS
     if upload_docs:
@@ -136,7 +166,7 @@ elif rag_update:
             with open(file_path+upload_doc.name, 'wb') as f:
                 f.write(bytes_data)
         stats, status, kb_id = bedrock_kb_injection(file_path)
-        msg = f'Total {stats}  to Amazon Bedrock Knowledge Base: {kb_id}  with status: {status}.' + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
+        msg = f'Total {stats}  to Amazon Bedrock Knowledge Base: {kb_id}  with status: {status}.' + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
         st.session_state.messages.append({"role": "assistant", "content": msg})
         st.chat_message("ai", avatar='🎙️').write(msg)
 
