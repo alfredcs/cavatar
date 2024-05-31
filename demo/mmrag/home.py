@@ -7,6 +7,7 @@ from PIL import Image
 from io import BytesIO
 import base64
 import time
+import hmac
 
 module_paths = ["./", "./configs"]
 file_path = "./data/"
@@ -25,7 +26,35 @@ st.title("Advanced RAG Demo")
 aoss_host = read_key_value(".aoss_config.txt", "AOSS_host_name")
 aoss_index = read_key_value(".aoss_config.txt", "AOSS_index_name")
 
+# Password protection
+def check_password():
+    """Returns `True` if the user had the correct password."""
 
+    def password_entered():
+        """Checks whether a password entered by the user is correct."""
+        if hmac.compare_digest(st.session_state["password"], st.secrets["password"]):
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  # Don't store the password.
+        else:
+            st.session_state["password_correct"] = False
+
+    # Return True if the passward is validated.
+    if st.session_state.get("password_correct", False):
+        return True
+
+    # Show input for password.
+    st.text_input(
+        "Password", type="password", on_change=password_entered, key="password"
+    )
+    if "password_correct" in st.session_state:
+        st.error("😕 Password incorrect")
+    return False
+
+
+# Check password
+if not check_password():
+    st.stop()  # Do not continue if check_password is not True.
+    
 #@st.cache_data
 #@st.cache_resource(TTL=300)
 with st.sidebar:
@@ -131,8 +160,8 @@ if rag_search:
         #    msg, urls = serp_search(prompt, option, embedding_model_id, max_token, temperature, top_p, top_k, doc_num)
         documents, urls = google_search(prompt, num_results=doc_num)
         msg = retrieval_faiss(prompt, documents, option, embedding_model_id, 6000, 600, max_token, temperature, top_p, top_k, doc_num)
-        msg += "\n\n ✧ Sources:\n\n" + '\n\n\r'.join(urls)
-        msg += "\n\n ✒︎ Content created by using: " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
+        msg += "\n\n ✧***Sources:***\n\n" + '\n\n\r'.join(urls)
+        msg += "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.messages.append({"role": "assistant", "content": msg})
         st.chat_message("ai", avatar='🦙').write(msg)
 
@@ -152,7 +181,7 @@ elif video_caption:
     
         prompt2 = xml_prompt(captions, audio_transcribe, prompt)
         msg = bedrock_textGen(option, prompt2, max_token, temperature, top_p, top_k, stop_sequences)
-        msg += "\n\n Audio transcribe: " + audio_transcribe + "\n\n ✒︎Content created by using: " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {tokens}+{estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
+        msg += "\n\n 🔊***Audio transcribe:*** " + audio_transcribe + "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {tokens}+{estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.messages.append({"role": "assistant", "content": msg})
         st.chat_message("ai", avatar='🦙').write(msg)
     
@@ -179,7 +208,7 @@ elif rag_retrieval:
         msg = bedrock_kb_retrieval(prompt, option)
         #msg = bedrock_kb_retrieval_advanced(prompt, option, max_token, temperature, top_p, top_k, stop_sequences)
         #msg = bedrock_kb_retrieval_decomposition(prompt, option, max_token, temperature, top_p, top_k, stop_sequences)
-        msg += "\n\n ✒︎Content created by using: " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
+        msg += "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.messages.append({"role": "assistant", "content": msg})
         st.chat_message("ai", avatar='🦙').write(msg)
         
@@ -197,7 +226,7 @@ else:
             msg = ' '
         else:
             msg=bedrock_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences)
-        msg += "\n\n ✒︎Content created by using: " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
+        msg += "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.messages.append({"role": "assistant", "content": msg})
         st.chat_message("ai", avatar='🦙').write(msg)
         
