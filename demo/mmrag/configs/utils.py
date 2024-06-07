@@ -33,6 +33,7 @@ from readabilipy import simple_json_from_html_string # Required to parse HTML to
 from langchain.agents import AgentExecutor, create_react_agent, initialize_agent, AgentType,load_tools
 from langchain_community.utilities.serpapi import SerpAPIWrapper
 from serpapi import GoogleSearch #, BingSearch
+from langchain_community.tools.tavily_search import TavilySearchResults
 
 from langchain_community.vectorstores import FAISS
 from langchain_chroma import Chroma
@@ -104,7 +105,7 @@ def extract_keywords(input_string):
     output_string = '+'.join(keywords)
     return re.sub(r'[.-:/"\']', ' ', output_string)
     
-# Saerch google and bing with a query and return urls
+# Search google and bing with a query and return urls
 def google_search(query: str, num_results: int=5):
     gsearch = GoogleSearchAPIWrapper(google_api_key=os.getenv("google_api_key"), google_cse_id=os.getenv("google_cse_id"))
     params = {
@@ -126,7 +127,7 @@ def google_search(query: str, num_results: int=5):
             soup = BeautifulSoup(response.content, 'html.parser')
             # Extract the text content from the HTML
             content = soup.get_text()
-            if "404 Not Found" not in content:
+            if "404 Not Found" not in content or "400 Client Error" not in content:
                 # Create a LangChain document
                 doc = Document(page_content=content, metadata={'title': item['title'],'source': item['link']})
                 documents.append(doc)
@@ -138,6 +139,32 @@ def google_search(query: str, num_results: int=5):
 
     return documents, urls
 
+## Tavily Search 
+def tavily_search(query: str, num_results: int=3):
+    def _set_if_undefined(var: str):
+        if not os.environ.get(var):
+            os.environ[var] = os.getenv(var.replace("KEY", "token").lower())
+
+    _set_if_undefined("OPENAI_API_KEY")
+    _set_if_undefined("LANGCHAIN_API_KEY")
+    _set_if_undefined("TAVILY_API_KEY")
+    
+    documents = []
+    web_search_tool = TavilySearchResults(k=num_results)
+    # Web search
+    docs = web_search_tool.invoke({"query": query})
+    if "404 Not Found" not in docs or '400 Client Error' not in docs:
+        #print(f"Web_search docs: {docs}")
+        web_results = "\n".join([d["content"] for d in docs])
+        web_urls = ", ".join([d["url"] for d in docs])
+        #web_results = Document(page_content=web_results, metadata={'source': web_urls})
+        web_results = Document(page_content=web_results)
+        if documents is not None:
+            documents.append(web_results)
+        else:
+            documents = [web_results]
+    return {"documents": documents, "urls":  [d["url"] for d in docs]}
+    
 '''
 class newsSearcher:
     def __init__(self):
@@ -399,7 +426,7 @@ def retrieval_chroma(query, model_id, embedding_model_id:str, chunk_size:int=600
         return "\n\n".join(doc.page_content for doc in docs)
 
     messages = [
-        ("system", """Your are a helpful assistant to provide omprehensive and truthful answers to questions, \n
+        ("system", """Your are a helpful assistant to provide comprehensive and truthful answers to questions, \n
                     drawing upon all relevant information contained within the specified in {context}. \n 
                     You add value by analyzing the situation and offering insights to enrich your answer. \n
                     Simply say I don't know if you can not find any evidence to match the question. \n

@@ -157,8 +157,29 @@ if rag_search:
         #documents = search_arxiv(prompt, max_results=doc_num, filepath='pdfs')
         #msg = retrieval_chroma(prompt, option, embedding_model_id, 6000, 600, max_token, temperature, top_p, top_k, doc_num
         #if 'simple general' in classify_query(prompt, 'simple general, others', 'anthropic.claude-3-haiku-20240307-v1:0'):
+        
         #    msg, urls = serp_search(prompt, option, embedding_model_id, max_token, temperature, top_p, top_k, doc_num)
-        documents, urls = google_search(prompt, num_results=doc_num)
+
+        ##
+        # Use both search engines concurrently
+        ##
+        #with concurrent.futures.ThreadPoolExecutor() as executor:
+        #    answer1 = executor.submit(google_search, prompt, num_results=doc_num)
+        #    answer2 = executor.submit(tavily_search, prompt, num_results=doc_num)
+        #    docs1, urls =  answer1.result()
+        #    docs2 = answer2.result()
+        #combined_content = "\n\n".join([docs1.page_content, docs2['documents'].page_content])
+        #documents = Document(page_content=combined_content)
+        #urls += docs2['urls'][0:doc_num]
+
+        # Tavily only
+        docs =  tavily_search(prompt, num_results=doc_num)
+        documents = docs['documents']
+        urls = docs['urls'][0:doc_num]
+        
+        # Google only
+        #documents, urls = google_search(prompt, num_results=doc_num)
+        
         msg = retrieval_faiss(prompt, documents, option, embedding_model_id, 6000, 600, max_token, temperature, top_p, top_k, doc_num)
         msg += "\n\n ✧***Sources:***\n\n" + '\n\n\r'.join(urls)
         msg += "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
