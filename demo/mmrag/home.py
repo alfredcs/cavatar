@@ -19,6 +19,7 @@ for module_path in module_paths:
 from utility import *
 from utils import *
 from video_captioning import *
+from anthropic_tools import *
 
 st.set_page_config(page_title="Advanced RAG",page_icon="🩺",layout="wide")
 st.title("Advanced RAG Demo")
@@ -60,23 +61,32 @@ if not check_password():
 with st.sidebar:
     #----- RAG  ------ 
     st.header(':green[Search RAG] :file_folder:')
-    rag_search = rag_update = rag_retrieval = video_caption = False
+    rag_search = rag_update = rag_retrieval = video_caption = image_caption = False
     rag_on = st.select_slider(
         'Activate RAG',
         value='None',
-        options=['None', 'Search', 'Video', 'Insert', 'Retrieval'])
+        options=['None', 'Search', 'Multimodal', 'Insert', 'Retrieval'])
     if 'Search' in rag_on:
         doc_num = st.slider('Choose max number of documents', 1, 8, 3)
         embedding_model_id = st.selectbox('Choose Embedding Model',('amazon.titan-embed-g1-text-02', 'amazon.titan-embed-image-v1'))
         rag_search = True
-    elif 'Video' in rag_on:
-        upload_video = st.file_uploader("Upload your video Here", accept_multiple_files=False, type=['mp4'])
-        if upload_video:
-            video_bytes = upload_video.getvalue()
-            with open(video_file_name, 'wb') as f:
-                f.write(video_bytes)
-            st.video(video_bytes)
-        video_caption = True
+    elif 'Multimodal' in rag_on:
+        upload_file = st.file_uploader("Upload your image/video here.", accept_multiple_files=False, type=["jpg", "png", "mp4", "mov"])
+        if upload_file is not None:
+            # Check if the uploaded file is an image
+            try:
+                bytes_data = upload_file.read()
+                image =  (io.BytesIO(bytes_data))
+                st.image(image)
+                image_caption = True
+            except:
+                # Check if the uploaded file is a video
+                video_bytes = upload_file.getvalue()
+                with open(video_file_name, 'wb') as f:
+                    f.write(video_bytes)
+                st.video(video_bytes)
+                video_caption = True
+                pass
     elif 'Insert' in rag_on:
         upload_docs = st.file_uploader("Upload your doc here", accept_multiple_files=True, type=['pdf', 'doc', 'jpg', 'png'])
         # Amazon Bedrock KB only supports titan-embed-text-v1 not g1-text-02
@@ -90,11 +100,17 @@ with st.sidebar:
     st.title(':orange[Model Config] :pencil2:') 
     if 'Search' in rag_on:
         option = st.selectbox('Choose Model',('anthropic.claude-3-haiku-20240307-v1:0', 
+                                              'anthropic.claude-3-sonnet-20240229-v1:0',
+                                              'claude-3-5-sonnet-20240620'
+                                             ))
+    elif 'Video' in rag_on:
+         option = st.selectbox('Choose Model',('anthropic.claude-3-haiku-20240307-v1:0', 
                                               'anthropic.claude-3-sonnet-20240229-v1:0'
                                              ))
     else:
         option = st.selectbox('Choose Model',('anthropic.claude-3-haiku-20240307-v1:0', 
                                               'anthropic.claude-3-sonnet-20240229-v1:0',
+                                              'claude-3-5-sonnet-20240620',
                                               #'anthropic.claude-3-opus-20240229-v1:0',
                                               'meta.llama3-70b-instruct-v1:0',
                                               'finetuned:llama-3-8b-instruct'))
@@ -163,12 +179,23 @@ if rag_search:
         ##
         # Use both search engines concurrently
         ##
+        #def combine_documents(doc1: Document, doc2: Document) -> Document:
+        #    combined_page_content = doc1.page_content + "\n\n" + doc2.page_content
+        #    combined_metadata = {**doc1.metadata, **doc2.metadata}
+        #    return Document(page_content=combined_page_content, metadata=combined_metadata)
+            
         #with concurrent.futures.ThreadPoolExecutor() as executor:
         #    answer1 = executor.submit(google_search, prompt, num_results=doc_num)
         #    answer2 = executor.submit(tavily_search, prompt, num_results=doc_num)
+        #    concurrent.futures.wait([answer1, answer2])
         #    docs1, urls =  answer1.result()
         #    docs2 = answer2.result()
+        
         #combined_content = "\n\n".join([docs1.page_content, docs2['documents'].page_content])
+        #documents = Document(
+        #    page_content=docs1.page_content + "\n" + docs2['documents'].page_content,
+        #    metadata={**doc1.metadata['source'], **docs['urls'][0:doc_num]}
+        #)
         #documents = Document(page_content=combined_content)
         #urls += docs2['urls'][0:doc_num]
 
@@ -177,10 +204,14 @@ if rag_search:
         documents = docs['documents']
         urls = docs['urls'][0:doc_num]
         
-        # Google only
-        #documents, urls = google_search(prompt, num_results=doc_num)
+        # Is Tavily search fails then try Google search
+        if documents is None or len(urls) == 0:
+            documents, urls = google_search(prompt, num_results=doc_num)
         
-        msg = retrieval_faiss(prompt, documents, option, embedding_model_id, 6000, 600, max_token, temperature, top_p, top_k, doc_num)
+        if 'claude-3-5' in option:
+            msg = retrieval_faiss_anthropic(prompt, documents, option, embedding_model_id, max_token, temperature, top_p, top_k, doc_num)
+        else:
+            msg = retrieval_faiss(prompt, documents, option, embedding_model_id, 6000, 600, max_token, temperature, top_p, top_k, doc_num)
         msg += "\n\n ✧***Sources:***\n\n" + '\n\n\r'.join(urls)
         msg += "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.messages.append({"role": "assistant", "content": msg})
@@ -203,6 +234,20 @@ elif video_caption:
         prompt2 = xml_prompt(captions, audio_transcribe, prompt)
         msg = bedrock_textGen(option, prompt2, max_token, temperature, top_p, top_k, stop_sequences)
         msg += "\n\n 🔊***Audio transcribe:*** " + audio_transcribe + "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {tokens}+{estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
+        st.session_state.messages.append({"role": "assistant", "content": msg})
+        st.chat_message("ai", avatar='🦙').write(msg)
+
+elif image_caption:
+    if "claude-3" not in option:
+        st.info("Please switch to a vision model")
+        st.stop()
+    if prompt := st.chat_input():
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        st.chat_message("user").write(prompt)
+        msg = bedrock_get_img_description(option, prompt, image, max_token, temperature, top_p, top_k, stop_sequences)
+        width, height = Image.open(image).size
+        tokens = int((height * width)/750)
+        msg += "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {tokens}+{estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.messages.append({"role": "assistant", "content": msg})
         st.chat_message("ai", avatar='🦙').write(msg)
     
@@ -239,7 +284,9 @@ else:
         st.chat_message("user").write(prompt)
         if 'llama-3-8b-instruct' in option.lower():
             msg=tgi_textGen2('http://infs.cavatar.info:7861/', prompt, max_token, temperature, top_p, top_k)
-        elif 'generate image' in classify_query(prompt, 'generate image, news, others', 'anthropic.claude-3-haiku-20240307-v1:0'):
+        elif 'claude-3-5' in option:
+            msg = anthropic_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences)
+        elif 'generate imagetextGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences)' in classify_query(prompt, 'generate image, news, others', 'anthropic.claude-3-haiku-20240307-v1:0'):
             option = 'amazon.titan-image-generator-v1' #'stability.stable-diffusion-xl-v1:0' # Or 'amazon.titan-image-generator-v1'
             base64_str = bedrock_imageGen(option, prompt, iheight=1024, iwidth=1024, src_image=None, image_quality='premium', image_n=1, cfg=7.5, seed=452345)
             new_image = Image.open(io.BytesIO(base64.decodebytes(bytes(base64_str, "utf-8"))))

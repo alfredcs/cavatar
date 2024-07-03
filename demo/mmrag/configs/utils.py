@@ -153,17 +153,20 @@ def tavily_search(query: str, num_results: int=3):
     web_search_tool = TavilySearchResults(k=num_results)
     # Web search
     docs = web_search_tool.invoke({"query": query})
-    if "404 Not Found" not in docs or '400 Client Error' not in docs:
-        #print(f"Web_search docs: {docs}")
-        web_results = "\n".join([d["content"] for d in docs])
-        web_urls = ", ".join([d["url"] for d in docs])
-        #web_results = Document(page_content=web_results, metadata={'source': web_urls})
-        web_results = Document(page_content=web_results)
-        if documents is not None:
-            documents.append(web_results)
-        else:
-            documents = [web_results]
-    return {"documents": documents, "urls":  [d["url"] for d in docs]}
+    try:
+        if "404 Not Found" not in docs or '400 Client Error' not in docs:
+            #print(f"Web_search docs: {docs}")
+            web_results = "\n".join([d["content"] for d in docs])
+            web_urls = ", ".join([d["url"] for d in docs])
+            web_results = Document(page_content=web_results, metadata={'source': web_urls})
+            #web_results = Document(page_content=web_results)
+            if documents is not None:
+                documents.append(web_results)
+            else:
+                documents = [web_results]
+        return {"documents": documents, "urls":  [d["url"] for d in docs]}
+    except:
+        return {"documents": [], "urls": []}
     
 '''
 class newsSearcher:
