@@ -52,6 +52,18 @@ from langchain.chains import LLMChain
 #from langchain_community.llms import TextGen
 from langchain_core.prompts import PromptTemplate
 
+# Pdf
+from unstructured.partition.pdf import partition_pdf
+import fitz
+from PIL import Image
+import io
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
+import pdfplumber
+import xml.etree.ElementTree as ET
+from xml.dom import minidom
+
+
 import sys   
 sys.setrecursionlimit(10000)
 
@@ -608,7 +620,7 @@ def bedrock_imageGen(model_id:str, prompt:str, iheight:int, iwidth:int, src_imag
             ]
     titan_negative_prompts = ','.join(negative_prompts)
     #try:
-    if model_id == "amazon.titan-image-generator-v1":
+    if 'amazon.titan-image-generator' in model_id:
         if cfg > 10.0:
            cfg = 10.0
         if src_image:
@@ -649,7 +661,7 @@ def bedrock_imageGen(model_id:str, prompt:str, iheight:int, iwidth:int, src_imag
                     }
                 }
             )
-    elif model_id == "stability.stable-diffusion-xl-v1:0":
+    elif 'stability.stable-diffusion-xl' in model_id:
         style_preset = "photographic"  # (e.g. photographic, digital-art, cinematic, ...)
         clip_guidance_preset = "FAST_GREEN" # (e.g. FAST_BLUE FAST_GREEN NONE SIMPLE SLOW SLOWER SLOWEST)
         sampler = "K_DPMPP_2S_ANCESTRAL" # (e.g. DDIM, DDPM, K_DPMPP_SDE, K_DPMPP_2M, K_DPMPP_2S_ANCESTRAL, K_DPM_2, K_DPM_2_ANCESTRAL, K_EULER, K_EULER_ANCESTRAL, K_HEUN, K_LMS)
@@ -771,4 +783,133 @@ def estimate_tokens(text, method="max"):
         return int(min(tokens_word_est, tokens_char_est))
     else:
         raise ValueError("Invalid method. Use 'average', 'words', 'chars', 'max', or 'min'.")
+
+
+#----- Talk to pdf  ------
+def extract_text_and_tables(pdf_path):
+    # Partition the PDF
+    elements = partition_pdf(
+                    filename=pdf_path,
+                    extract_images_in_pdf=False,
+                    infer_table_structure=True,
+                    chunking_strategy="by_title", #https://docs.unstructured.io/api-reference/api-services/chunking#by-page-chunking-strategy
+                    max_characters=200000,
+                    new_after_n_chars=200000,
+                    strategy="fast",
+                    combine_text_under_n_chars=200000,
+                )
+
+    # Initialize lists to store text and tables
+    texts = []
+    tables = []
+
+    # Iterate through elements
+    for element in elements:
+        #if isinstance(element, Table):
+        if "unstructured.documents.elements.Table" in str(type(element)):
+            tables.append(element)
+        elif "unstructured.documents.elements.CompositeElement" in str(type(element)):
+            texts.append(str(element))
+
+    return texts, tables
+    
+def image_parser(pdf_filename):
+    # Open the PDF file
+    pdf_file = fitz.open(pdf_filename)
+    image_files = []
+    text_image_pairs = defaultdict(list)
+    # Iterate through each page
+    for page_index in range(len(pdf_file)):
+        page = pdf_file[page_index]
+        image_list = page.get_images()
+        text = page.get_text()
         
+        # If there are images on the page
+        if image_list:
+            print(f"[+] Found {len(image_list)} images on page {page_index}")
+    
+            for image_index, img in enumerate(image_list, start=1):
+                # Get the image xref
+                xref = img[0]
+    
+                # Extract the image bytes
+                base_image = pdf_file.extract_image(xref)
+                image_bytes = base_image["image"]
+    
+                # Save the image to disk
+                with open(f"page_{page_index+1}_image_{image_index}.png", "wb") as f:
+                    f.write(image_bytes)
+                    image_files.append(f"page_{page_index+1}_image_{image_index}.png")
+
+                # Convert image bytes to PIL Image
+                image = Image.open(io.BytesIO(image_bytes))
+                
+                # Extract text from image using OCR
+                image_text = bedrock_get_img_description(image_2_text_model, image_caption_promt, image, max_tokens, temperature, top_p, top_k, stop_sequences)
+
+                # Form teh image/text correlation
+                text_image_pairs[page_index].append({
+                    "text": text,
+                    "image": image,
+                    "image_text": image_text
+                })
+                
+    # Close the PDF file
+    pdf_file.close()
+    return image_files, text_image_pairs
+
+
+def parser_pdf(fpath: str, fname:str):
+    # Combine the file path and file name
+    full_path = os.path.join(fpath, fname)
+
+    # Check if the file exists
+    if not os.path.isfile(full_path):
+        return "File not found", ""
+        
+
+    with ThreadPoolExecutor() as executor:
+        # Get text, tables
+        answer1 = executor.submit(extract_text_and_tables, full_path)
+        # Get images
+        #answer2 = executor.submit(image_parser, fpath+fname)
+        texts, tables = answer1.result()
+        #img_files, text_image_pairs = answer2.result()
+  
+    return texts, tables #, img_files, text_image_pairs 
+
+def parse_pdf_to_xml(pdf_path):
+    # Create the root element
+    root = ET.Element("document")
+
+    with pdfplumber.open(pdf_path) as pdf:
+        for page_num, page in enumerate(pdf.pages):
+            # Create a page element
+            page_elem = ET.SubElement(root, "page", number=str(page_num + 1))
+
+            # Extract text and preserve some structure
+            words = page.extract_words(keep_blank_chars=True, use_text_flow=True)
+
+            current_line = ET.SubElement(page_elem, "line")
+            current_top = None
+
+            for word in words:
+                if current_top is None or abs(word['top'] - current_top) > 2:
+                    # New line detected
+                    current_line = ET.SubElement(page_elem, "line")
+                    current_top = word['top']
+
+                # Add word to the current line
+                word_elem = ET.SubElement(current_line, "word")
+                word_elem.text = word['text']
+                #word_elem.set("x", str(word['x0']))
+                #word_elem.set("y", str(word['top']))
+                #word_elem.set("width", str(word['width']))
+                #word_elem.set("height", str(word['height']))
+
+    # Convert the XML tree to a string
+    xml_string = ET.tostring(root, encoding='unicode')
+
+    return xml_string
+
+    
