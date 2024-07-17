@@ -12,6 +12,8 @@ import hmac
 module_paths = ["./", "./configs"]
 file_path = "/home/alfred/demos/mmrag/data/"
 video_file_name = "uploaded_video.mp4"
+temp_audio_file = "audio_inut.wav"
+voice_prompt = ''
 
 for module_path in module_paths:
     sys.path.append(os.path.abspath(module_path))
@@ -21,8 +23,8 @@ from utils import *
 from video_captioning import *
 from anthropic_tools import *
 
-st.set_page_config(page_title="Advanced RAG",page_icon="🩺",layout="wide")
-st.title("Advanced RAG Demo")
+st.set_page_config(page_title="GenAide",page_icon="🩺",layout="wide")
+st.title("Personal assistant")
 
 aoss_host = read_key_value(".aoss_config.txt", "AOSS_host_name")
 aoss_index = read_key_value(".aoss_config.txt", "AOSS_index_name")
@@ -60,18 +62,18 @@ if not check_password():
 #@st.cache_resource(TTL=300)
 with st.sidebar:
     #----- RAG  ------ 
-    st.header(':green[Search RAG] :file_folder:')
+    st.header(':green[Choose a topic] :eyes:')
     rag_search = rag_update = rag_retrieval = video_caption = image_caption = talk_2_pdf = pdf_exist = False
     rag_on = st.select_slider(
-        'Activate RAG',
-        value='None',
-        options=['None', 'Search', 'Multimodal', 'Files', 'Insert', 'Retrieval'])
+        '',
+        value='Basic',
+        options=['Basic', 'Search', 'Multimodal', 'Files', 'Insert', 'Retrieval'])
     if 'Search' in rag_on:
         doc_num = st.slider('Choose max number of documents', 1, 8, 3)
         embedding_model_id = st.selectbox('Choose Embedding Model',('amazon.titan-embed-g1-text-02', 'amazon.titan-embed-image-v1'))
         rag_search = True
     elif 'Multimodal' in rag_on:
-        upload_file = st.file_uploader("Upload your image/video here.", accept_multiple_files=False, type=["jpg", "png", "mp4", "mov"])
+        upload_file = st.file_uploader("Upload your image/video here.", accept_multiple_files=False, type=["jpg", "png", "webp", "mp4", "mov"])
         if upload_file is not None:
             # Check if the uploaded file is an image
             try:
@@ -121,15 +123,24 @@ with st.sidebar:
                                               'anthropic.claude-3-sonnet-20240229-v1:0',
                                               'claude-3-5-sonnet-20240620'
                                              ))
-    elif 'Video' in rag_on:
+    elif 'Multimodal' in rag_on:
          option = st.selectbox('Choose Model',('anthropic.claude-3-haiku-20240307-v1:0', 
-                                              'anthropic.claude-3-sonnet-20240229-v1:0'
+                                              'anthropic.claude-3-sonnet-20240229-v1:0',
+                                               'claude-3-5-sonnet-20240620',
+                                               'gpt-4o',
+                                             ))
+    elif 'Files' in rag_on:
+         option = st.selectbox('Choose Model',('anthropic.claude-3-haiku-20240307-v1:0', 
+                                                'anthropic.claude-3-sonnet-20240229-v1:0',
+                                                'claude-3-5-sonnet-20240620',
+                                                'gpt-4o',
                                              ))
     else:
         option = st.selectbox('Choose Model',('anthropic.claude-3-haiku-20240307-v1:0', 
                                               'anthropic.claude-3-sonnet-20240229-v1:0',
                                               'claude-3-5-sonnet-20240620',
                                               #'anthropic.claude-3-opus-20240229-v1:0',
+                                              'gpt-4o',
                                               'meta.llama3-70b-instruct-v1:0',
                                               'finetuned:llama-3-8b-instruct'))
         
@@ -144,21 +155,24 @@ with st.sidebar:
     # --- Audio query -----#
     st.divider()
     st.header(':green[Enable voice input]')# :microphone:')
-    voice_on = st.toggle('Activate microphone')
-    if voice_on:
-        #record_audio_bytes = audio_recorder(icon_name="fa-solid fa-microphone-slash", recording_color="#cc0000", neutral_color="#666666",icon_size="2x",)
-        record_audio_bytes = audio_recorder(text="",
-                                            recording_color="#e8b62c",
-                                            neutral_color="#6aa36f",
-                                            icon_name="user",
-                                            icon_size="6x",)
-        if record_audio_bytes:
-            st.audio(record_audio_bytes, format="audio/wav")#, start_time=0, *, sample_rate=None)
-            with open(temp_audio_file, 'wb') as audio_file:
-                audio_file.write(record_audio_bytes)
-            if os.path.exists(temp_audio_file):
-                voice_prompt = get_asr(temp_audio_file)
-        st.caption("Press space and hit ↩️ for voice & agent activation")
+    #voice_on = st.toggle('Activate microphone')
+    #if voice_on:
+    record_audio_bytes = audio_recorder(text="Click to record: ", icon_name="fa-solid fa-microphone-slash",
+                                        pause_threshold=2.0, sample_rate=41_000,
+                                        recording_color="#cc0000", neutral_color="#6aa36f",icon_size="2x",)
+    #record_audio_bytes = audio_recorder(icon_size="2x")
+    #record_audio_bytes = audio_recorder(text="",
+    #                                    recording_color="#e8b62c",
+    #                                    neutral_color="#6aa36f",
+    #                                    icon_name="user",
+    #                                    icon_size="6x",)
+    if record_audio_bytes:
+        st.audio(record_audio_bytes, format="audio/wav")#, start_time=0, *, sample_rate=None)
+        with open(temp_audio_file, 'wb') as audio_file:
+            audio_file.write(record_audio_bytes)
+        if os.path.exists(temp_audio_file):
+            voice_prompt = get_asr(temp_audio_file)
+    st.caption("Press space and hit ↩️ for asr activation")
         
     # ---- Clear chat history ----
     st.divider()
@@ -182,7 +196,8 @@ for msg in st.session_state.messages:
 
 #
 if rag_search:
-    if prompt := st.chat_input():
+    if prompt := st.chat_input(placeholder=voice_prompt, on_submit=None, key="user_input"):
+        prompt=voice_prompt if prompt==' ' else prompt
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.chat_message("user").write(prompt)
         
@@ -233,13 +248,14 @@ if rag_search:
         msg += "\n\n ✧***Sources:***\n\n" + '\n\n\r'.join(urls)
         msg += "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.messages.append({"role": "assistant", "content": msg})
-        st.chat_message("ai", avatar='🦙').write(msg)
+        st.chat_message("ai", avatar='👁️‍🗨️').write(msg)
 
 elif video_caption:
     if "anthropic.claude-3" not in option:
         st.info("Please switch to a vision model")
         st.stop()
-    if prompt := st.chat_input():
+    if prompt := st.chat_input(placeholder=voice_prompt, on_submit=None, key="user_input"):
+        prompt=voice_prompt if prompt==' ' else prompt
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.chat_message("user").write(prompt)
         b64frames, audio_file = process_video(video_file_name, seconds_per_frame=2)
@@ -253,27 +269,31 @@ elif video_caption:
         msg = bedrock_textGen(option, prompt2, max_token, temperature, top_p, top_k, stop_sequences)
         msg += "\n\n 🔊***Audio transcribe:*** " + audio_transcribe + "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {tokens}+{estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.messages.append({"role": "assistant", "content": msg})
-        st.chat_message("ai", avatar='🦙').write(msg)
+        st.chat_message("ai", avatar='🎥').write(msg)
 
 elif image_caption:
-    if "claude-3" not in option:
-        st.info("Please switch to a vision model")
-        st.stop()
-    if prompt := st.chat_input():
+    if prompt := st.chat_input(placeholder=voice_prompt, on_submit=None, key="user_input"):
+        prompt=voice_prompt if prompt==' ' else prompt
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.chat_message("user").write(prompt)
-        msg = bedrock_get_img_description(option, prompt, image, max_token, temperature, top_p, top_k, stop_sequences)
+        if "claude-3-5" in option: 
+            msg = anthropic_imageCaption(option, prompt, image, max_token, temperature, top_p, top_k)
+        elif "gpt-4" in option:
+            msg = openai_image_getDescription(option, prompt, image, max_token, temperature, top_p)
+        else:
+            msg = bedrock_get_img_description(option, prompt, image, max_token, temperature, top_p, top_k, stop_sequences)
         width, height = Image.open(image).size
         tokens = int((height * width)/750)
         msg += "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {tokens}+{estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.messages.append({"role": "assistant", "content": msg})
-        st.chat_message("ai", avatar='🦙').write(msg)
+        st.chat_message("ai", avatar='🖼️').write(msg)
 # Pdf parser        
 elif talk_2_pdf: 
-    if prompt := st.chat_input():
+    if prompt := st.chat_input(placeholder=voice_prompt, on_submit=None, key="user_input"):
+        prompt=voice_prompt if prompt==' ' else prompt
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.chat_message("user").write(prompt)
-
+        
         #file_path, fnames
         if not pdf_exist:
             xml_texts = ''
@@ -284,11 +304,15 @@ elif talk_2_pdf:
             #    #tables += table
         
         prompt2 = f"{prompt}. Your answer should be strictly based on the context in {xml_texts}."
-        #msg = anthropic_textGen(option, prompt2, max_token, temperature, top_p, top_k, stop_sequences)
-        msg = bedrock_textGen(option, prompt2, max_token, temperature, top_p, top_k, stop_sequences)
+        if 'claude-3-5' in option:
+            msg = anthropic_textGen(option, prompt2, max_token, temperature, top_p, top_k, stop_sequences)
+        elif 'gpt-4' in option:
+            msg = openai_textGen(option, prompt2, max_token, temperature, top_p)
+        else:
+            msg = bedrock_textGen(option, prompt2, max_token, temperature, top_p, top_k, stop_sequences)
         msg += "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {estimate_tokens(prompt2, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.messages.append({"role": "assistant", "content": msg})
-        st.chat_message("ai", avatar='🦙').write(msg)
+        st.chat_message("ai", avatar='📂').write(msg)
 # RAG injection        
 elif rag_update:        
     # Update AOSS
@@ -302,10 +326,11 @@ elif rag_update:
         stats, status, kb_id = bedrock_kb_injection(file_path)
         msg = f'Total {stats}  to Amazon Bedrock Knowledge Base: {kb_id}  with status: {status}.' + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
         st.session_state.messages.append({"role": "assistant", "content": msg})
-        st.chat_message("ai", avatar='🎙️').write(msg)
+        st.chat_message("ai", avatar='🖊️').write(msg)
 
 elif rag_retrieval:
-    if prompt := st.chat_input():
+    if prompt := st.chat_input(placeholder=voice_prompt, on_submit=None, key="user_input"):
+        prompt=voice_prompt if prompt==' ' else prompt
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.chat_message("user").write(prompt)
         
@@ -315,14 +340,41 @@ elif rag_retrieval:
         #msg = bedrock_kb_retrieval_decomposition(prompt, option, max_token, temperature, top_p, top_k, stop_sequences)
         msg += "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.messages.append({"role": "assistant", "content": msg})
-        st.chat_message("ai", avatar='🦙').write(msg)
+        st.chat_message("ai", avatar='🤞').write(msg)
+
+elif (record_audio_bytes and len(voice_prompt) > 1):
+        if prompt := st.chat_input(placeholder=voice_prompt, on_submit=None, key="user_input"):
+            prompt=voice_prompt if prompt==' ' else prompt
+            st.session_state.messages.append({"role": "user", "content": prompt})
+            st.chat_message("user").write(prompt)  
+            if 'llama-3-8b-instruct' in option.lower():
+                msg=tgi_textGen2('http://infs.cavatar.info:7861/', prompt, max_token, temperature, top_p, top_k)
+            elif 'gpt-4' in option:
+                msg = openai_textGen(option, prompt, max_token, temperature, top_p)
+            elif 'claude-3-5' in option:
+                msg = anthropic_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences)
+            #elif 'generate imagetextGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences)' in classify_query(prompt, 'generate image, news, others', 'anthropic.claude-3-haiku-20240307-v1:0'):
+            elif 'generate' in classify_query(prompt, 'generate image, news, others', 'anthropic.claude-3-haiku-20240307-v1:0'):
+                option = 'amazon.titan-image-generator-v1' #'stability.stable-diffusion-xl-v1:0' # Or 'amazon.titan-image-generator-v1'
+                base64_str = bedrock_imageGen(option, prompt, iheight=1024, iwidth=1024, src_image=None, image_quality='premium', image_n=1, cfg=7.5, seed=452345)
+                new_image = Image.open(io.BytesIO(base64.decodebytes(bytes(base64_str, "utf-8"))))
+                st.image(new_image,width=512)#use_column_width='auto')
+                msg = ' '
+            else:
+                msg=bedrock_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences)
+            msg += "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
+            st.session_state.messages.append({"role": "assistant", "content": msg})
+            st.chat_message("ai", avatar='🎙️').write(msg)
         
 else:
     if prompt := st.chat_input():
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.chat_message("user").write(prompt)
+        
         if 'llama-3-8b-instruct' in option.lower():
-            msg=tgi_textGen2('http://infs.cavatar.info:7861/', prompt, max_token, temperature, top_p, top_k)
+            msg = tgi_textGen2('http://infs.cavatar.info:7861/', prompt, max_token, temperature, top_p, top_k)
+        elif 'gpt-4' in option:
+            msg = openai_textGen(option, prompt, max_token, temperature, top_p)
         elif 'claude-3-5' in option:
             msg = anthropic_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences)
         #elif 'generate imagetextGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences)' in classify_query(prompt, 'generate image, news, others', 'anthropic.claude-3-haiku-20240307-v1:0'):
@@ -336,5 +388,5 @@ else:
             msg=bedrock_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences)
         msg += "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.messages.append({"role": "assistant", "content": msg})
-        st.chat_message("ai", avatar='🦙').write(msg)
+        st.chat_message("ai", avatar='🤵').write(msg)
         

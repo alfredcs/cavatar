@@ -63,6 +63,8 @@ import pdfplumber
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
 
+# OpenAi
+from openai import OpenAI
 
 import sys   
 sys.setrecursionlimit(10000)
@@ -544,7 +546,7 @@ def classify_query(query, classes: str, modelId: str):
     bedrock_client = boto3.client('bedrock-runtime')
     
     # Constructing the prompt for the LLM
-    prompt = f"Human:Classify the following query into one of these categories: {classes}.\n\nQuery: {query}\n\n Please answer directly with the catergory name only. \n\n  AI:"
+    prompt = f"Human:Classify the following query into one of these categories: {classes}.\n\nQuery: {query}\n\n Please answer directly with the category name only. \n\n  AI:"
     payload = {
             "modelId": modelId,
             "contentType": "application/json",
@@ -911,5 +913,22 @@ def parse_pdf_to_xml(pdf_path):
     xml_string = ET.tostring(root, encoding='unicode')
 
     return xml_string
+
+# --- OpenAi -----
+def openai_textGen(model_name, prompt, max_output_tokens, temperature, top_p):
+    openai_client = OpenAI(api_key=os.getenv('openai_api_token'))
+    response = openai_client.chat.completions.create(
+        model=model_name,
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": "Who won the world series in 2020?"},
+            {"role": "assistant", "content": "The Los Angeles Dodgers won the World Series in 2020."},
+            {"role": "user", "content": prompt}
+        ],
+        max_tokens=max_output_tokens,
+        temperature=temperature,
+        top_p=top_p,
+    )
+    return response.choices[0].message.content
 
     
