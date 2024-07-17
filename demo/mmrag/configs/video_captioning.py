@@ -9,6 +9,7 @@ import json
 import time
 import sys
 import io
+
 #from langchain.vectorstores import Chroma
 import random
 from PIL import Image
@@ -60,13 +61,20 @@ def convert_image_to_base64(BytesIO_image):
     img_data = buffered.getvalue()
     # Encode to base64
     base64_encoded = base64.b64encode(img_data)
-    return base64_encoded.decode()
+    return base64_encoded.decode('utf-8')
     
 def bedrock_get_img_description(model_id, prompt, image, max_token:int=2048, temperature:float=0.01, top_p:float=0.90, top_k:int=40, stop_sequences="\n\nHuman"):
     stop_sequence = [stop_sequences]
     #encoded_string = base64.b64encode(image)
     if isinstance(image, io.BytesIO):
         image = Image.open(image)
+
+    # Resize to image resolution by half to make sure input to Claude 3 is < 5M
+    width, height = image.size
+    if width > 2048 or height > 2048:
+        new_size = (int(width/2), int(height/2))
+        image = image.resize(new_size, Image.Resampling.LANCZOS) # or Image.ANTIALIAS for Pillow < 7.0.0
+        
     #base64_string = encoded_string.decode('utf-8')
     payload = {
         "modelId": model_id,
@@ -116,6 +124,43 @@ def bedrock_get_img_description(model_id, prompt, image, max_token:int=2048, tem
     response_body = response['body'].read().decode('utf-8')
     data = json.loads(response_body)
     return data['content'][0]['text']
+
+def openai_image_getDescription(option, prompt, image, max_output_tokens, temperature, top_p):
+    openai_api_key = os.getenv("openai_api_token")
+    headers = {
+      "Content-Type": "application/json",
+      "Authorization": f"Bearer {openai_api_key}"
+    }
+    if isinstance(image, io.BytesIO):
+        image = Image.open(image)
+    payload = {
+      "model": option,
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": prompt 
+            },
+            {
+              "type": "image_url",
+              "image_url": {
+                "url": f"data:image/jpeg;base64,{convert_image_to_base64(image)}"
+              }
+            }
+          ]
+        }
+      ],
+      "max_tokens": max_output_tokens,
+      "temperature": temperature,
+      "top_p": top_p,
+    }
+    try:
+        response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
+        return response.json()['choices'][0]['message']['content'].replace("\n", "",2)
+    except:
+        return f"API to {model_name} has been denied!"
 
 def videoCaptioning_claude_nn(option, prompt, b64frames, max_token, temperature, top_p, top_k):
     ## Take random 20 images due to Claude 3 limit
