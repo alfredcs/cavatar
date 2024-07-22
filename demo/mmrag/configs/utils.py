@@ -931,4 +931,13 @@ def openai_textGen(model_name, prompt, max_output_tokens, temperature, top_p):
     )
     return response.choices[0].message.content
 
-    
+# --- Photo gen --- 
+def gen_photo_bytes(prompt: str):
+    url = "http://infs.cavatar.info:8083/generate?prompt="
+    response = requests.get(url+prompt)
+    if response.status_code == 200:
+        image_bytes = response.content
+        return image_bytes
+    else:
+        print(f"Error fetching image from {url}")
+        return None
