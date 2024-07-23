@@ -3,11 +3,13 @@ from audio_recorder_streamlit import audio_recorder
 import sys
 import os
 import io
+import json
 from PIL import Image
 from io import BytesIO
 import base64
 import time
 import hmac
+from streamlit_pdf_viewer import pdf_viewer
 
 module_paths = ["./", "./configs"]
 file_path = "/home/alfred/demos/mmrag/data/"
@@ -90,7 +92,7 @@ with st.sidebar:
                 video_caption = True
                 pass
     elif 'Files' in rag_on:
-        upload_docs = st.file_uploader("Upload your pdf/doc files.", accept_multiple_files=True, type=["pdf", "doc"])
+        upload_docs = st.file_uploader("Upload your pdf/doc/txt files.", accept_multiple_files=True, type=["pdf", "doc", "csv", "json", "txt", "xml"])
         fnames = []
         try:
             # pdf
@@ -99,12 +101,17 @@ with st.sidebar:
             for upload_doc in upload_docs:
                 bytes_data = upload_doc.read()
                 fnames.append(upload_doc.name)
-                if os.path.isfile(file_path+upload_doc.name):
+                full_filename = file_path+upload_doc.name
+                if os.path.isfile(full_filename):
                     pdf_exist = True
                 else:
-                    with open(file_path+upload_doc.name, 'wb') as f:
+                    with open(full_filename, 'wb') as f:
                         f.write(bytes_data)
             talk_2_pdf = True
+            if is_pdf(full_filename):
+                pdf_viewer(input=bytes_data, width=800)
+            else:
+                st.json(json.dumps(bytes_data))
         except:
             pass
     elif 'Insert' in rag_on:
@@ -144,7 +151,7 @@ with st.sidebar:
                                               #'anthropic.claude-3-opus-20240229-v1:0',
                                               'gpt-4o-mini',
                                               'gpt-4o',
-                                              'meta.llama3-70b-instruct-v1:0',
+                                              'meta.llama3-1-70b-instruct-v1:0',
                                               'finetuned:llama-3-8b-instruct'))
         
     st.write("------- Default parameters ----------")
@@ -301,10 +308,15 @@ elif talk_2_pdf:
         if not pdf_exist:
             xml_texts = ''
             for fname in fnames:
-                texts, tables = parser_pdf(file_path, fname)
-                xml_text = parse_pdf_to_xml(file_path+fname)
-                xml_texts += xml_text
-            #    #tables += table
+                if is_pdf(os.path.join(file_path, fname)):    
+                    texts, tables = parser_pdf(file_path, fname)
+                    xml_text = parse_pdf_to_xml(file_path+fname)
+                    xml_texts += xml_text
+                    #tables += table
+                else:
+                    with open(os.path.join(file_path, fname), 'r') as file:
+                        file_content = file.read()
+                    xml_texts += file_content
         
         prompt2 = f"{prompt}. Your answer should be strictly based on the context in {xml_texts}."
         if 'claude-3-5' in option:
@@ -387,7 +399,7 @@ else:
             #new_image = Image.open(io.BytesIO(base64.decodebytes(bytes(base64_str, "utf-8"))))
             option = 'DreamLike V2.0' 
             new_image = gen_photo_bytes(prompt)
-            st.image(new_image,width=1024)#use_column_width='auto')
+            st.image(new_image, output_format="png", use_column_width='auto')
             msg = ' '
         else:
             msg=bedrock_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences)

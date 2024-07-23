@@ -62,6 +62,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pdfplumber
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
+import magic
 
 # OpenAi
 from openai import OpenAI
@@ -258,6 +259,26 @@ class newsSearcher:
         urls = [link.get("href") for link in soup.select(".b_algo h2 a")]
         return urls[:count]
 '''
+# --- is a file pdf ---
+def is_pdf(file_path):
+    """
+    Checks if a file is a PDF.
+
+    Args:
+        file_path (str): The path to the file.
+
+    Returns:
+        bool: True if the file is a PDF, False otherwise.
+    """
+    try:
+        with open(file_path, 'rb') as file:
+            file_type = magic.from_buffer(file.read(1024), mime=True)
+            return file_type == 'application/pdf'
+    except FileNotFoundError:
+        return False
+    except Exception:
+        return False
+        
 
 # ---- Search arxiv -----
 #--- Configure Bedrock -----
