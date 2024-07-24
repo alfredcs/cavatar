@@ -3,6 +3,7 @@ from langchain_core.documents.base import Document
 import requests
 import os
 import boto3
+from botocore.config import Config
 import json
 import re
 import string
@@ -21,6 +22,7 @@ from operator import itemgetter
 from langchain import hub
 from langchain_community.embeddings import BedrockEmbeddings
 from langchain_community.chat_models import BedrockChat
+from langchain_aws import ChatBedrockConverse
 from langchain.text_splitter import CharacterTextSplitter, RecursiveCharacterTextSplitter
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
@@ -300,6 +302,25 @@ def config_bedrock(embedding_model_id, model_id, max_tokens, temperature, top_p,
     #)
 
     return chat, embedding_bedrock
+
+def config_bedrock_converse(embedding_model_id, model_id, max_tokens, temperature, top_p):
+    my_config = Config(read_timeout=70, #secs, default 60
+                       connect_timeout=100, #secs, default 60
+                       retries = {
+                        'max_attempts': 10,
+                        'mode': 'adaptive' #or standard or lagacy
+                    }
+                )
+    bedrock_client = boto3.client('bedrock-runtime', config=my_config)
+    embedding_bedrock = BedrockEmbeddings(client=bedrock_client, model_id=embedding_model_id)
+    chat = ChatBedrockConverse(
+        model=model_id,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        top_p=top_p,
+    )
+    return chat, embedding_bedrock
+    
     
 # Convert to Document
 def convert_to_document2(entry):
@@ -408,7 +429,10 @@ def retrieval_faiss(query, documents, model_id, embedding_model_id:str, chunk_si
     docs = text_splitter.split_documents(documents)
     
     # Prepare embedding function
-    chat, embedding = config_bedrock(embedding_model_id, model_id, max_tokens, temperature, top_p, top_k)
+    if 'meta' in model_id.lower():
+        chat, embedding = config_bedrock_converse(embedding_model_id, model_id, max_tokens, temperature, top_p)
+    else:
+        chat, embedding = config_bedrock(embedding_model_id, model_id, max_tokens, temperature, top_p, top_k)
     
     # Try to get vectordb with FAISS
     db = FAISS.from_documents(docs, embedding)

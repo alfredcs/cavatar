@@ -109,9 +109,13 @@ with st.sidebar:
                         f.write(bytes_data)
             talk_2_pdf = True
             if is_pdf(full_filename):
-                pdf_viewer(input=bytes_data, width=800)
+                pdf_viewer(input=bytes_data, width=1200)
+            elif 'json' in upload_doc.name and isinstance(bytes_data, bytes):
+                string_data = bytes_data.decode('utf-8')
+                json_data = json.loads(string_data)
+                st.json(json_data)
             else:
-                st.json(json.dumps(bytes_data))
+                st.write(bytes_data)
         except:
             pass
     elif 'Insert' in rag_on:
@@ -128,6 +132,7 @@ with st.sidebar:
     if 'Search' in rag_on:
         option = st.selectbox('Choose Model',('anthropic.claude-3-haiku-20240307-v1:0', 
                                               'anthropic.claude-3-sonnet-20240229-v1:0',
+                                              'meta.llama3-1-70b-instruct-v1:0',
                                               'claude-3-5-sonnet-20240620'
                                              ))
     elif 'Multimodal' in rag_on:
@@ -140,6 +145,7 @@ with st.sidebar:
     elif 'Files' in rag_on:
          option = st.selectbox('Choose Model',('anthropic.claude-3-haiku-20240307-v1:0', 
                                                 'anthropic.claude-3-sonnet-20240229-v1:0',
+                                                'meta.llama3-1-70b-instruct-v1:0',
                                                 'claude-3-5-sonnet-20240620',
                                                 'gpt-4o-mini',
                                                 'gpt-4o',

@@ -4,3 +4,4 @@ sslKeyFile = '/home/alfred/utils/cavatar.key'
 enableXsrfProtection = false
 enableCORS = false
 password = 'mmrag2024!'
+#maxUploadSize = 200
