@@ -83,7 +83,7 @@ def get_bedrock_client(
         region_name=target_region,
         retries={
             "max_attempts": 10,
-            "mode": "standard",
+            "mode": "adaptive", #standard
         },
     )
     session = boto3.Session(**session_kwargs)
