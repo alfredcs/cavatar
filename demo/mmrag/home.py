@@ -298,15 +298,24 @@ elif image_caption:
         prompt=voice_prompt if prompt==' ' else prompt
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.chat_message("user").write(prompt)
-        if "claude-3-5" in option: 
-            msg = anthropic_imageCaption(option, prompt, image, max_token, temperature, top_p, top_k)
-        elif "gpt-4" in option:
-            msg = openai_image_getDescription(option, prompt, image, max_token, temperature, top_p)
+        if 'upscaling' in classify_query(prompt, 'image upscaling, image to video, others', 'anthropic.claude-3-haiku-20240307-v1:0'):
+            try:
+                new_image = upscale_image_bytes(bytes_data)
+                st.image(new_image, output_format="png", use_column_width='auto')
+                msg = "\n\n ✒︎***Content created by using:*** Aura V2 " + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
+            except:
+                msg = "Server timeout. Please check imahe format and size and retry. " + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
+                pass
         else:
-            msg = bedrock_get_img_description(option, prompt, image, max_token, temperature, top_p, top_k, stop_sequences)
-        width, height = Image.open(image).size
-        tokens = int((height * width)/750)
-        msg += "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {tokens}+{estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
+            if "claude-3-5" in option: 
+                msg = anthropic_imageCaption(option, prompt, image, max_token, temperature, top_p, top_k)
+            elif "gpt-4" in option:
+                msg = openai_image_getDescription(option, prompt, image, max_token, temperature, top_p)
+            else:
+                msg = bedrock_get_img_description(option, prompt, image, max_token, temperature, top_p, top_k, stop_sequences)
+            width, height = Image.open(image).size
+            tokens = int((height * width)/750)
+            msg += "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {tokens}+{estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.messages.append({"role": "assistant", "content": msg})
         st.chat_message("ai", avatar='🖼️').write(msg)
 # Pdf parser        

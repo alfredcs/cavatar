@@ -986,3 +986,16 @@ def gen_photo_bytes(prompt: str):
     else:
         print(f"Error fetching image from {url}")
         return None
+
+# --- Image upscaleing  --- 
+def upscale_image_bytes(image_bytes):
+    files = {"file": image_bytes}    
+    #url = "http://infs.cavatar.info:8085//upscale/?image_bytes="
+    url = "http://infs.cavatar.info:8085/upscale"
+    response = requests.post(url, files=files)
+    if response.status_code == 200:
+        image_bytes_out = response.content
+        return image_bytes_out
+    else:
+        print(f"Error fetching image from {url}")
+        return None
