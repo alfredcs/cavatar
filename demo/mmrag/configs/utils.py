@@ -3,6 +3,8 @@ from langchain_core.documents.base import Document
 import requests
 import os
 import boto3
+import base64
+from io import BytesIO
 from botocore.config import Config
 import json
 import re
@@ -708,7 +710,7 @@ def bedrock_imageGen(model_id:str, prompt:str, iheight:int, iwidth:int, src_imag
                     }
                 }
             )
-    elif 'stability.stable-diffusion-xl' in model_id:
+    elif 'stability.stable-diffusion' in model_id:
         style_preset = "photographic"  # (e.g. photographic, digital-art, cinematic, ...)
         clip_guidance_preset = "FAST_GREEN" # (e.g. FAST_BLUE FAST_GREEN NONE SIMPLE SLOW SLOWER SLOWEST)
         sampler = "K_DPMPP_2S_ANCESTRAL" # (e.g. DDIM, DDPM, K_DPMPP_SDE, K_DPMPP_2M, K_DPMPP_2S_ANCESTRAL, K_DPM_2, K_DPM_2_ANCESTRAL, K_EULER, K_EULER_ANCESTRAL, K_HEUN, K_LMS)
@@ -750,9 +752,9 @@ def bedrock_imageGen(model_id:str, prompt:str, iheight:int, iwidth:int, src_imag
         contentType="application/json"
     )
     response_body = json.loads(response["body"].read())
-    if model_id == "amazon.titan-image-generator-v1":
+    if "amazon.titan-image-generator" in  model_id :
         base64_image_data = response_body["images"][0]
-    elif model_id == "stability.stable-diffusion-xl-v1:0":
+    elif "stability.stable-diffusion" in  model_id :
         base64_image_data = response_body["artifacts"][0].get("base64")
 
     return base64_image_data
@@ -760,6 +762,83 @@ def bedrock_imageGen(model_id:str, prompt:str, iheight:int, iwidth:int, src_imag
     #except ClientError:
     #    logger.error("Couldn't invoke Titan Image Generator Model")
     #    raise
+
+# --- Titan color guided image generation and image background removal ---
+def bedrock_image_processing(model_id:str, prompt:str, action_type:str, iheight:int, iwidth:int, src_image, color_string, image_quality:str, image_n:int, cfg:float, seed:int):
+    negative_prompts = [
+                "poorly rendered",
+                "poor background details",
+                "poorly drawn objects",
+                "poorly focused objects",
+                "disfigured object features",
+                "cartoon",
+                "animation"
+            ]
+    titan_negative_prompts = ','.join(negative_prompts)
+    
+    if 'titan-image-generator-v2' not in model_id:
+        return "Please choose the Titan Image Generator v2 model."
+        
+    if cfg > 10.0:
+       cfg = 10.0
+    if src_image and 'color guided image generation' in action_type.lower():
+        input_image = base64.b64encode(src_image).decode("utf-8")
+        body = json.dumps(
+            {
+                "taskType": "COLOR_GUIDED_GENERATION",
+                "colorGuidedGenerationParams": {
+                    "text":prompt,   # Required
+                    "negativeText": titan_negative_prompts,  # Optional
+                    "referenceImage": input_image,
+                    "colors": [color_string] # list of color hex codes
+                },
+                "imageGenerationConfig": {
+                    "numberOfImages": image_n,   # Range: 1 to 5 
+                    "quality": image_quality,  # Options: standard or premium
+                    "height": iheight,         # Supported height list in the docs 
+                    "width": iwidth,         # Supported width list in the docs
+                    "cfgScale": cfg,       # Range: 1.0 (exclusive) to 10.0
+                    "seed": seed             # Range: 0 to 214783647
+                }
+            }
+        )
+    elif src_image and 'image background removal' in action_type.lower():
+        #resize if needed
+        image = Image.open(BytesIO(src_image))
+        width, height = image.size
+        if width > 1408 or height > 1408:
+            #image = image.resize((1408,1408), resample=Image.BICUBIC)
+            image = image.resize((1408,1408), resample=Image.Resampling.LANCZOS)
+            buffer = BytesIO()
+            image.save(buffer, format="PNG")
+            resized_base64_image = base64.b64encode(buffer.getvalue()).decode('utf-8')
+        else:
+            resized_base64_image = base64.b64encode(src_image).decode("utf-8")
+        
+        body = json.dumps(
+            {
+                "taskType": "BACKGROUND_REMOVAL",
+                "backgroundRemovalParams": {
+                    "image": resized_base64_image,
+                }
+            }
+        )
+
+    bedrock_client = boto3.client("bedrock-runtime",  region_name="us-west-2")
+    response = bedrock_client.invoke_model(
+        body=body, 
+        modelId=model_id,
+        accept="application/json", 
+        contentType="application/json"
+    )
+    response_body = json.loads(response["body"].read())
+    if "amazon.titan-image-generator" in  model_id :
+        base64_image_data = response_body["images"][0]
+    elif "stability.stable-diffusion" in  model_id :
+        base64_image_data = response_body["artifacts"][0].get("base64")
+
+    return base64_image_data
+
 
 #------------ Retrivel from serpapi search -----
 def serp_search(query, model_id, embedding_model_id:str, max_tokens: int=2048, temperature: int=0.01, top_p: float=0.90, top_k: int=40,  doc_num: int=3):
