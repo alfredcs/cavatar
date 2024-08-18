@@ -802,6 +802,39 @@ def bedrock_image_processing(model_id:str, prompt:str, action_type:str, iheight:
                 }
             }
         )
+    elif src_image and 'image to image conditioning' in action_type.lower():
+        #resize if needed
+        image = Image.open(BytesIO(src_image))
+        width, height = image.size
+        if width > 1408 or height > 1408:
+            #image = image.resize((1408,1408), resample=Image.BICUBIC)
+            image = image.resize((1408,1408), resample=Image.Resampling.LANCZOS)
+            buffer = BytesIO()
+            image.save(buffer, format="PNG")
+            resized_base64_image = base64.b64encode(buffer.getvalue()).decode('utf-8')
+        else:
+            resized_base64_image = base64.b64encode(src_image).decode("utf-8")
+        
+        body = json.dumps(
+            {
+                "taskType": "TEXT_IMAGE",
+                "textToImageParams": {
+                    "text": prompt,
+                    "negativeText": negative_prompts,
+                    "conditionImage": resized_base64_image,
+                    "controlMode": "CANNY_EDGE", # or  SEGMENTATION
+                    "controlStrength":0.75,
+                },
+                "imageGenerationConfig": {
+                    "numberOfImages": image_n,   # Range: 1 to 5 
+                    #"quality": image_quality,  # Options: standard or premium
+                    "height": iheight,         # Supported height list in the docs 
+                    "width": iwidth,         # Supported width list in the docs
+                    "cfgScale": cfg,       # Range: 1.0 (exclusive) to 10.0
+                    "seed": seed             # Range: 0 to 214783647
+                }
+            }
+        )
     elif src_image and 'image background removal' in action_type.lower():
         #resize if needed
         image = Image.open(BytesIO(src_image))
@@ -1056,8 +1089,7 @@ def openai_textGen(model_name, prompt, max_output_tokens, temperature, top_p):
     return response.choices[0].message.content
 
 # --- Photo gen --- 
-def gen_photo_bytes(prompt: str):
-    url = "http://infs.cavatar.info:8083/generate?prompt="
+def gen_photo_bytes(prompt: str, url:str):
     response = requests.get(url+prompt)
     if response.status_code == 200:
         image_bytes = response.content

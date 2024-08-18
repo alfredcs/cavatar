@@ -23,6 +23,7 @@ config_filename = '.aoss_config.txt'
 suffix = random.randrange(200, 900)
 boto3_session = boto3.session.Session()
 region_name = boto3_session.region_name
+#region_name = "us-east-1"
 iam_client = boto3_session.client('iam')
 account_number = boto3.client('sts').get_caller_identity().get('Account')
 identity = boto3.client('sts').get_caller_identity()['Arn']
@@ -592,6 +593,8 @@ def bedrock_textGen(model_id, prompt, max_tokens, temperature, top_p, top_k, sto
         # Convert the payload to bytes
         body_bytes = json.dumps(payload['body']).encode('utf-8')
         # Invoke the model
+        #if "anthropic.claude-3-5-sonnet" in model_id:
+        #    bedrock_client = boto3.client("bedrock-runtime", region_name="us-west-2")
         response = bedrock_client.invoke_model(
             body=body_bytes,
             contentType=payload['contentType'],
@@ -603,7 +606,8 @@ def bedrock_textGen(model_id, prompt, max_tokens, temperature, top_p, top_k, sto
         response_body = response['body'].read().decode('utf-8')
         data = json.loads(response_body)
         return data['content'][0]['text']
-    elif 'meta' in model_id.lower():
+
+    elif 'meta31' in model_id.lower():
         # Embed the message in Llama 3's prompt format.
         meta_prompt = f"""
         <|begin_of_text|>
@@ -631,22 +635,25 @@ def bedrock_textGen(model_id, prompt, max_tokens, temperature, top_p, top_k, sto
         # Extract and print the generated text.
         return model_response["generation"]
 
-
-        '''
-        inference_modifier = {
-            "max_gen_len": max_tokens,
-            "temperature": temperature,
-            #"top_k": top_k,
-            "top_p": top_p,
-            #"stop_sequences": stop_sequence,
-        }
-    
-        textgen_llm = Bedrock(
-            model_id=model_id,
-            client=bedrock_client,
-            model_kwargs=inference_modifier,
-        )     
-        return textgen_llm(prompt)
-        '''
+    elif "mistral" in model_id.lower() or "meta" in model_id.lower():
+        conversation = [
+            {
+                "role": "user",
+                "content": [{"text": prompt}],
+            }
+        ]
+        try:
+            # Send the message to the model, using a basic inference configuration.
+            response = bedrock_client.converse(
+                modelId=model_id,
+                messages=conversation,
+                inferenceConfig={"maxTokens": max_tokens, "temperature": temperature, "topP": top_p},
+            )
+        
+            # Extract and print the response text.
+            return response["output"]["message"]["content"][0]["text"]
+        
+        except (ClientError, Exception) as e:
+            print(f"ERROR: Can't invoke '{model_id}'. Reason: {e}")
     else:
         return f"Incorrect Bedrock model ID {model_id.lower()} selected!"

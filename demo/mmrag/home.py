@@ -133,38 +133,48 @@ with st.sidebar:
     if 'Search' in rag_on:
         option = st.selectbox('Choose Model',('anthropic.claude-3-haiku-20240307-v1:0', 
                                               'anthropic.claude-3-sonnet-20240229-v1:0',
+                                              'anthropic.claude-3-opus-20240229-v1:0',
+                                              'anthropic.claude-3-5-sonnet-20240620-v1:0',
                                               'meta.llama3-1-70b-instruct-v1:0',
                                               'claude-3-5-sonnet-20240620'
                                              ))
     elif 'Multimodal' in rag_on:
          option = st.selectbox('Choose Model',('anthropic.claude-3-haiku-20240307-v1:0', 
                                               'anthropic.claude-3-sonnet-20240229-v1:0',
-                                               'claude-3-5-sonnet-20240620',
+                                               'anthropic.claude-3-opus-20240229-v1:0',
+                                               'anthropic.claude-3-5-sonnet-20240620-v1:0',
+                                               #'claude-3-5-sonnet-20240620',
                                                'gpt-4o-mini',
                                                'gpt-4o',
                                              ))
     elif 'Files' in rag_on:
          option = st.selectbox('Choose Model',('anthropic.claude-3-haiku-20240307-v1:0', 
                                                 'anthropic.claude-3-sonnet-20240229-v1:0',
+                                                'anthropic.claude-3-opus-20240229-v1:0',
+                                                'anthropic.claude-3-5-sonnet-20240620-v1:0',
                                                 'meta.llama3-1-70b-instruct-v1:0',
-                                                'claude-3-5-sonnet-20240620',
+                                                #'claude-3-5-sonnet-20240620',
                                                 'gpt-4o-mini',
                                                 'gpt-4o',
                                                 'FT.Llama3-Med42-8B'
                                              ))
     elif 'Retrieval' in rag_on:
         option = st.selectbox('Choose Model',('anthropic.claude-3-haiku-20240307-v1:0', 
-                                                'anthropic.claude-3-sonnet-20240229-v1:0',
+                                              'anthropic.claude-3-sonnet-20240229-v1:0',
+                                              'anthropic.claude-3-opus-20240229-v1:0',
+                                              'anthropic.claude-3-5-sonnet-20240620-v1:0',
                                              ))
     else:
         option = st.selectbox('Choose Model',('anthropic.claude-3-haiku-20240307-v1:0', 
                                               'anthropic.claude-3-sonnet-20240229-v1:0',
-                                              'claude-3-5-sonnet-20240620',
+                                              'anthropic.claude-3-opus-20240229-v1:0',
+                                              'anthropic.claude-3-5-sonnet-20240620-v1:0',
+                                              #'claude-3-5-sonnet-20240620',
                                               'meta.llama3-1-70b-instruct-v1:0',
                                               'meta.llama3-1-405b-instruct-v1:0',
-                                              #'anthropic.claude-3-opus-20240229-v1:0',
                                               'gpt-4o-mini',
                                               'gpt-4o',
+                                              'mistral.mistral-large-2407-v1:0',
                                               'FT.Llama3-Med42-8B'))
         
     st.write("------- Default parameters ----------")
@@ -264,7 +274,7 @@ if rag_search:
         if documents is None or len(urls) == 0:
             documents, urls = google_search(prompt, num_results=doc_num)
         
-        if 'claude-3-5' in option:
+        if 'claude-3-5' in option and not 'anthropic.claude' in option:
             msg = retrieval_faiss_anthropic(prompt, documents, option, embedding_model_id, max_token, temperature, top_p, top_k, doc_num)
         else:
             msg = retrieval_faiss(prompt, documents, option, embedding_model_id, 6000, 600, max_token, temperature, top_p, top_k, doc_num)
@@ -316,7 +326,7 @@ elif image_caption:
                 st.image(new_image, output_format="png", use_column_width='auto')
                 msg = "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
             except:
-                msg = "Image backgrounf removal failed." + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
+                msg = "Image backgrounf removal failed. Make sure the image does not contain sensitive info." + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
                 pass
         elif 'image to image conditioning' in action:
             try:
@@ -326,10 +336,16 @@ elif image_caption:
                 st.image(new_image, output_format="png", use_column_width='auto')
                 msg = "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
             except:
-                msg = "Image conditioning failed." + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
+                msg = "Image conditioning failed. Make sure the image does not contain sensitive info." + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
                 pass
+        elif 'generation' in action:
+                option = 'amazon.titan-image-generator-v2:0'
+                base64_str = bedrock_imageGen(option, prompt, iheight=1024, iwidth=1024, src_image=None, image_quality='premium', image_n=1, cfg=7.5, seed=random.randint(100, 500000))
+                new_image = Image.open(io.BytesIO(base64.decodebytes(bytes(base64_str, "utf-8"))))
+                st.image(new_image, output_format="png", use_column_width='auto')
+                msg = "\n\n ✒︎***Content created by using:*** "+ option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms"
         else:
-            if "claude-3-5" in option: 
+            if "claude-3-5" in option and not 'anthropic.claude' in option: 
                 msg = anthropic_imageCaption(option, prompt, image, max_token, temperature, top_p, top_k)
             elif "gpt-4" in option:
                 msg = openai_image_getDescription(option, prompt, image, max_token, temperature, top_p)
@@ -362,7 +378,7 @@ elif talk_2_pdf:
                     xml_texts += file_content
         
         prompt2 = f"{prompt}. Your answer should be strictly based on the context in {xml_texts}."
-        if 'claude-3-5' in option:
+        if 'claude-3-5' in option and not 'anthropic.claude' in option:
             msg = anthropic_textGen(option, prompt2, max_token, temperature, top_p, top_k, stop_sequences)
         elif 'gpt-4' in option:
             msg = openai_textGen(option, prompt2, max_token, temperature, top_p)
@@ -414,14 +430,15 @@ elif (record_audio_bytes and len(voice_prompt) > 1):
                 #base64_str = bedrock_imageGen(option, prompt, iheight=1024, iwidth=1024, src_image=None, image_quality='premium', image_n=1, cfg=7.5, seed=random.randint(100, 500000))
                 #new_image = Image.open(io.BytesIO(base64.decodebytes(bytes(base64_str, "utf-8"))))
                 option = 'SD3 Medium' 
-                new_image = gen_photo_bytes(prompt)
+                url = "http://infs.cavatar.info:8083/generate?prompt="
+                new_image = gen_photo_bytes(prompt, url)
                 st.image(new_image, output_format="png", use_column_width='auto')
                 msg = ' '
             elif 'med42' in option.lower():
                 msg=tgi_textGen2('http://infs.cavatar.info:7861/', prompt, max_token, temperature, top_p, top_k)
             elif 'gpt-4' in option:
                 msg = openai_textGen(option, prompt, max_token, temperature, top_p)
-            elif 'claude-3-5' in option:
+            elif 'claude-3-5' in option and not 'anthropic.claude' in option:
                 msg = anthropic_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences)
             #elif 'generate imagetextGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences)' in classify_query(prompt, 'generate image, news, others', 'anthropic.claude-3-haiku-20240307-v1:0'):
             else:
@@ -437,19 +454,16 @@ else:
 
         action = classify_query(prompt, 'image generation, image upscaling, color guided image generation, image background removal, image to image conditioning, others', 'anthropic.claude-3-haiku-20240307-v1:0')
         if 'generation' in action:
-            option = 'amazon.titan-image-generator-v2:0' #'stability.stable-diffusion-xl-v1:0' # Or 'amazon.titan-image-generator-v1'
-            #base64_str = bedrock_imageGen(option, prompt, iheight=1024, iwidth=1024, src_image=None, image_quality='premium', image_n=1, cfg=7.5, seed=452345)
-            base64_str = bedrock_imageGen(option, prompt, iheight=1024, iwidth=1024, src_image=None, image_quality='premium', image_n=1, cfg=7.5, seed=random.randint(100, 500000))
-            new_image = Image.open(io.BytesIO(base64.decodebytes(bytes(base64_str, "utf-8"))))
-            #option = 'SD3 Medium' 
-            #new_image = gen_photo_bytes(prompt)
+            option = 'flux.1.dev' #'stability.stable-diffusion-xl-v1:0' # Or 'amazon.titan-image-generator-v1'
+            url = "http://video.cavatar.info:8080/generate?prompt="
+            new_image = gen_photo_bytes(prompt, url)
             st.image(new_image, output_format="png", use_column_width='auto')
             msg = ' '
         elif 'llama3-med42-8b' in option.lower():
             msg = tgi_textGen2('http://infs.cavatar.info:7861/', prompt, max_token, temperature, top_p, top_k)
         elif 'gpt-4' in option:
             msg = openai_textGen(option, prompt, max_token, temperature, top_p)
-        elif 'claude-3-5' in option:
+        elif 'claude-3-5' in option and not 'anthropic.claude' in option:
             msg = anthropic_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences)
         else:
             msg=bedrock_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences)
