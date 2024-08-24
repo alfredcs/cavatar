@@ -463,8 +463,8 @@ else:
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.chat_message("user").write(prompt)
 
-        action = classify_query(prompt, 'image generation, image upscaling, color guided image generation, image background removal, image to image conditioning, others', 'anthropic.claude-3-haiku-20240307-v1:0')
-        if 'generation' in action:
+        action = classify_query2(prompt, 'anthropic.claude-3-haiku-20240307-v1:0')
+        if 'generation' in action.lower():
             option = 'flux.1.dev' #'stability.stable-diffusion-xl-v1:0' # Or 'amazon.titan-image-generator-v1'
             url = "http://video.cavatar.info:8080/generate?prompt="
             new_image = gen_photo_bytes(prompt, url)

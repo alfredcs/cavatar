@@ -643,7 +643,7 @@ def classify_query(query, classes: str, modelId: str):
 
 def classify_query2(query: str, modelId: str):
     question_category_prompt = '''You are a senior specialist of analytical support. Your task is to classify precisely the incoming questions to match the type. Depending on your answer, question will be routed to the right action based on your type choice, so your task is crucial. There are 6 possible question types: 
-    - Generation - Generate an new image from the input text.
+    - Generation - Generate a new image out of the input text.
     - Background - Remove the background from the input image. 
     - Upscale - Enhance or upscale the image for higher resolution.
     - Segmentation - Segment out the object identified by the input text out in the input image.
