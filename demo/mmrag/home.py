@@ -25,6 +25,7 @@ from utility import *
 from utils import *
 from video_captioning import *
 from anthropic_tools import *
+from sam2 import *
 
 st.set_page_config(page_title="GenAide",page_icon="🩺",layout="wide")
 st.title("Personal assistant")
@@ -70,7 +71,7 @@ with st.sidebar:
     rag_on = st.select_slider(
         '',
         value='Basic',
-        options=['Basic', 'Search', 'Multimodal', 'Files', 'Insert', 'Retrieval'])
+        options=['Basic', 'Search', 'Multimodal', 'Files'])#, 'Insert', 'Retrieval'])
     if 'Search' in rag_on:
         doc_num = st.slider('Choose max number of documents', 1, 8, 3)
         embedding_model_id = st.selectbox('Choose Embedding Model',('amazon.titan-embed-g1-text-02', 'amazon.titan-embed-image-v1'))
@@ -122,7 +123,7 @@ with st.sidebar:
     elif 'Insert' in rag_on:
         upload_docs = st.file_uploader("Upload your doc here", accept_multiple_files=True, type=['pdf', 'doc', 'jpg', 'png'])
         # Amazon Bedrock KB only supports titan-embed-text-v1 not g1-text-02
-        embedding_model_id = st.selectbox('Choose Embedding Model',('amazon.amazon.titan-embed-text-v1', 'amazon.titan-embed-image-v1'))
+        embedding_model_id = st.selectbox('Choose Embedding Model',('amazon.titan-embed-text-v2:0', 'amazon.titan-embed-image-v1'))
         rag_update = True
     elif 'Retrieval' in rag_on:
         rag_retrieval = True
@@ -171,7 +172,7 @@ with st.sidebar:
                                               'anthropic.claude-3-5-sonnet-20240620-v1:0',
                                               #'claude-3-5-sonnet-20240620',
                                               'meta.llama3-1-70b-instruct-v1:0',
-                                              'meta.llama3-1-405b-instruct-v1:0',
+                                              #'meta.llama3-1-405b-instruct-v1:0',
                                               'gpt-4o-mini',
                                               'gpt-4o',
                                               'mistral.mistral-large-2407-v1:0',
@@ -309,16 +310,16 @@ elif image_caption:
         prompt=voice_prompt if prompt==' ' else prompt
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.chat_message("user").write(prompt)
-        action = classify_query(prompt, 'image generation, image upscaling, color guided image generation, image background removal, image to image conditioning, others', 'anthropic.claude-3-haiku-20240307-v1:0')
-        if 'upscaling' in action:
+        action = classify_query2(prompt, 'anthropic.claude-3-haiku-20240307-v1:0')
+        if 'upscale' in action.lower():
             try:
                 new_image = upscale_image_bytes(bytes_data)
                 st.image(new_image, output_format="png", use_column_width='auto')
                 msg = "\n\n ✒︎***Content created by using:*** Aura V2 " + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
             except:
-                msg = "Server timeout. Please check imahe format and size and retry. " + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
+                msg = "Server timeout. Please check image format and size and retry. " + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
                 pass
-        elif  'image background removal' in action: # and hasattr(locals(), 'bytes_data'):
+        elif  'background' in action.lower(): # and hasattr(locals(), 'bytes_data'):
             try:
                 option = 'amazon.titan-image-generator-v2:0'
                 base64_str = bedrock_image_processing(option, prompt, action, iheight=1024, iwidth=1024, src_image=bytes_data, color_string=None, image_quality='premium', image_n=1, cfg=7.5, seed=random.randint(100, 500000))
@@ -326,19 +327,29 @@ elif image_caption:
                 st.image(new_image, output_format="png", use_column_width='auto')
                 msg = "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
             except:
-                msg = "Image backgrounf removal failed. Make sure the image does not contain sensitive info." + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
+                msg = "Image background removal failed. Make sure the image does not contain sensitive info." + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
                 pass
-        elif 'image to image conditioning' in action:
+        elif 'segmentation' in action.lower():
+            try:
+                #new_image = pred_image_bytes(bytes_data, prompt)
+                new_image, new_mask = seg_image(bytes_data, prompt)
+                st.image(new_image, output_format="png", use_column_width='auto')
+                st.image(new_mask, output_format="png", use_column_width='auto')
+                msg = "\n\n ✒︎***Content created by using:*** EVF-SAM2 " + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
+            except:
+                msg = "SAM2 server timeout. Please check image format and size and retry. " + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
+                pass
+        elif 'conditioning' in action.lower():
             try:
                 option = 'amazon.titan-image-generator-v2:0'
                 base64_str = bedrock_image_processing(option, prompt, action, iheight=1024, iwidth=1024, src_image=bytes_data, color_string=None, image_quality='premium', image_n=1, cfg=7.5, seed=random.randint(100, 500000))
                 new_image = Image.open(io.BytesIO(base64.decodebytes(bytes(base64_str, "utf-8"))))
                 st.image(new_image, output_format="png", use_column_width='auto')
-                msg = "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
+                msg = "\n\n ✒︎***Image conditioned by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
             except:
                 msg = "Image conditioning failed. Make sure the image does not contain sensitive info." + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
                 pass
-        elif 'generation' in action:
+        elif 'generation' in action.lower():
                 option = 'amazon.titan-image-generator-v2:0'
                 base64_str = bedrock_imageGen(option, prompt, iheight=1024, iwidth=1024, src_image=None, image_quality='premium', image_n=1, cfg=7.5, seed=random.randint(100, 500000))
                 new_image = Image.open(io.BytesIO(base64.decodebytes(bytes(base64_str, "utf-8"))))

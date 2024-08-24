@@ -30,6 +30,7 @@ from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from langchain.prompts.chat import ChatPromptTemplate
 from langchain_core.runnables import RunnableParallel
+from langchain_core.messages import SystemMessage, HumanMessage
 #from langchain.utilities import GoogleSearchAPIWrapper
 from langchain.retrievers.web_research import WebResearchRetriever
 from langchain_community.utilities import GoogleSearchAPIWrapper
@@ -593,7 +594,7 @@ def classify_query(query, classes: str, modelId: str):
     bedrock_client = boto3.client('bedrock-runtime')
     
     # Constructing the prompt for the LLM
-    prompt = f"Human:Classify the following query into one of these categories: {classes}.\n\nQuery: {query}\n\n Please answer directly with the category name only. \n\n  AI:"
+    prompt = f"Carefully analyze the {query} and select the most likely category from {classes}. Please answer directly with the category name from the {classes} only."
     payload = {
             "modelId": modelId,
             "contentType": "application/json",
@@ -639,6 +640,25 @@ def classify_query(query, classes: str, modelId: str):
     except Exception as e:
         print(f"Error classifying query: {e}")
         return "Error"
+
+def classify_query2(query: str, modelId: str):
+    question_category_prompt = '''You are a senior specialist of analytical support. Your task is to classify precisely the incoming questions to match the type. Depending on your answer, question will be routed to the right action based on your type choice, so your task is crucial. There are 6 possible question types: 
+    - Generation - Generate an new image from the input text.
+    - Background - Remove the background from the input image. 
+    - Upscale - Enhance or upscale the image for higher resolution.
+    - Segmentation - Segment out the object identified by the input text out in the input image.
+    - Conditioning - Condition the input image and genderate a similiar one guided by the input text.
+    - Others - Image understanding and image caption creation.
+Return in the output only one word to represent the top matched type from (GENERATION, BACKGROUND, UPSCALE, SEGMENTATION, CONDITIONING or OTHERS).
+'''
+
+    chat, _ = config_bedrock(embedding_model_id="", model_id=modelId, max_tokens=128, temperature=0.01, top_p=0.99, top_k=20)
+    messages = [
+        SystemMessage(content=question_category_prompt), 
+        HumanMessage(content=query)
+    ]
+    response = chat.invoke(messages)
+    return response.content
 
 # ---- Image gen --------
 def image_to_base64(img) -> str:
@@ -924,8 +944,11 @@ def estimate_tokens(text, method="max"):
     Returns:
     int: The estimated number of tokens.
     """
-    word_count = len(text.split())
-    char_count = len(text)
+    if text is None:
+        word_count = char_count = 0
+    else:
+        word_count = len(text.split())
+        char_count = len(text)
 
     tokens_word_est = word_count / 0.75
     tokens_char_est = char_count / 4
@@ -1109,4 +1132,17 @@ def upscale_image_bytes(image_bytes):
         return image_bytes_out
     else:
         print(f"Error fetching image from {url}")
+        return None
+
+# --- Image segmentation  --- 
+def pred_image_bytes(image_bytes, prompt):
+    files = {"file": image_bytes, "prompt": prompt}    
+    #url = "http://infs.cavatar.info:8085//upscale/?image_bytes="
+    url = "http://video.cavatar.info:8081/pred_image"
+    response = requests.post(url, files=files)
+    if response.status_code == 200:
+        image_bytes_out = response.content
+        return image_bytes_out
+    else:
+        print(f"Error calling SAM2 from {url}")
         return None
