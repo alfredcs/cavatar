@@ -11,6 +11,7 @@ import base64
 import time
 import hmac
 from streamlit_pdf_viewer import pdf_viewer
+from concurrent.futures import ThreadPoolExecutor
 
 module_paths = ["./", "./configs"]
 file_path = "/home/alfred/demos/mmrag/data/"
@@ -21,11 +22,13 @@ voice_prompt = ''
 for module_path in module_paths:
     sys.path.append(os.path.abspath(module_path))
 
+from blog_writer import *
 from utility import *
 from utils import *
 from video_captioning import *
 from anthropic_tools import *
 from sam2 import *
+
 
 st.set_page_config(page_title="GenAide",page_icon="🩺",layout="wide")
 st.title("Personal assistant")
@@ -67,11 +70,11 @@ if not check_password():
 with st.sidebar:
     #----- RAG  ------ 
     st.header(':green[Choose a topic] :eyes:')
-    rag_search = rag_update = rag_retrieval = video_caption = image_caption = talk_2_pdf = pdf_exist = False
+    rag_search = rag_update = rag_retrieval = video_caption = image_caption = talk_2_pdf = pdf_exist = blog_writer = False
     rag_on = st.select_slider(
         '',
         value='Basic',
-        options=['Basic', 'Search', 'Multimodal', 'Files'])#, 'Insert', 'Retrieval'])
+        options=['Basic', 'Search', 'Multimodal', 'Files', 'Blog'])#, 'Insert', 'Retrieval'])
     if 'Search' in rag_on:
         doc_num = st.slider('Choose max number of documents', 1, 8, 3)
         embedding_model_id = st.selectbox('Choose Embedding Model',('amazon.titan-embed-g1-text-02', 'amazon.titan-embed-image-v1'))
@@ -127,6 +130,8 @@ with st.sidebar:
         rag_update = True
     elif 'Retrieval' in rag_on:
         rag_retrieval = True
+    elif 'Blog' in rag_on:
+        blog_writer = True
                 
     #----- Choose models  ------ 
     st.divider()
@@ -165,6 +170,13 @@ with st.sidebar:
                                               'anthropic.claude-3-opus-20240229-v1:0',
                                               'anthropic.claude-3-5-sonnet-20240620-v1:0',
                                              ))
+    elif 'Blog' in rag_on:
+        option = st.selectbox('Choose Model',('anthropic.claude-3-haiku-20240307-v1:0', 
+                                              'anthropic.claude-3-sonnet-20240229-v1:0',
+                                              'anthropic.claude-3-5-sonnet-20240620-v1:0',
+                                              'meta.llama3-1-70b-instruct-v1:0',
+                                              'mistral.mistral-large-2407-v1:0',
+                                             ))
     else:
         option = st.selectbox('Choose Model',('anthropic.claude-3-haiku-20240307-v1:0', 
                                               'anthropic.claude-3-sonnet-20240229-v1:0',
@@ -180,7 +192,7 @@ with st.sidebar:
         
     st.write("------- Default parameters ----------")
     temperature = st.number_input("Temperature", min_value=0.0, max_value=1.0, value=0.1, step=0.05)
-    max_token = st.number_input("Maximum Output Token", min_value=0, value=1024, step=64)
+    max_token = st.number_input("Maximum Output Token", min_value=0, value=2048, step=64)
     top_p = st.number_input("Top_p: The cumulative probability cutoff for token selection", min_value=0.1, value=0.85)
     top_k = st.number_input("Top_k: Sample from the k most likely next tokens at each step", min_value=1, value=40)
     #candidate_count = st.number_input("Number of generated responses to return", min_value=1, value=1)
@@ -347,7 +359,7 @@ elif image_caption:
                 st.image(new_image, output_format="png", use_column_width='auto')
                 msg = "\n\n ✒︎***Image conditioned by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
             except:
-                msg = "Image conditioning failed. Make sure the image does not contain sensitive info." + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
+                msg = "Image conditioning failed. Make sure the image does not contain sensitive info." + f" Latency: {(time.time() - start_time) * 1000:.2f} ms" 
                 pass
         elif 'generation' in action.lower():
                 option = 'amazon.titan-image-generator-v2:0'
@@ -457,7 +469,20 @@ elif (record_audio_bytes and len(voice_prompt) > 1):
             msg += "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
             st.session_state.messages.append({"role": "assistant", "content": msg})
             st.chat_message("ai", avatar='🎙️').write(msg)
-        
+elif blog_writer:
+    if prompt := st.chat_input():
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        st.chat_message("user").write(prompt)
+        blog_crew = blogCrew(prompt, option)
+        msg = blog_crew.run().raw
+        image_option = 'flux.1.dev' #'stability.stable-diffusion-xl-v1:0' # Or 'amazon.titan-image-generator-v1'
+        url = "http://video.cavatar.info:8080/generate?prompt="
+        new_image = gen_photo_bytes(prompt, url)
+        st.image(new_image, output_format="png", use_column_width='auto')
+        #msg = "To be added soon. Stayed tuned...."
+        msg += f"\n\n ✒︎***Content created by using:*** {option}, ***image generated by using:*** {image_option}, latency: {(time.time() - start_time) * 1000:.2f} ms, tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
+        st.session_state.messages.append({"role": "assistant", "content": msg})
+        st.chat_message("ai", avatar='🤵').write(msg)
 else:
     if prompt := st.chat_input():
         st.session_state.messages.append({"role": "user", "content": prompt})
