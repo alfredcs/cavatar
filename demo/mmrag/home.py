@@ -186,7 +186,7 @@ with st.sidebar:
                                               'anthropic.claude-3-5-sonnet-20240620-v1:0',
                                               #'claude-3-5-sonnet-20240620',
                                               'meta.llama3-1-70b-instruct-v1:0',
-                                              #'meta.llama3-1-405b-instruct-v1:0',
+                                              'meta.llama3-1-405b-instruct-v1:0',
                                               'gpt-4o-mini',
                                               'gpt-4o',
                                               'mistral.mistral-large-2407-v1:0',
