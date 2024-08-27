@@ -656,5 +656,6 @@ def bedrock_textGen(model_id, prompt, max_tokens, temperature, top_p, top_k, sto
         
         except (ClientError, Exception) as e:
             print(f"ERROR: Can't invoke '{model_id}'. Reason: {e}")
+            return {e}
     else:
         return f"Incorrect Bedrock model ID {model_id.lower()} selected!"
