@@ -70,7 +70,7 @@ if not check_password():
 with st.sidebar:
     #----- RAG  ------ 
     st.header(':green[Choose a topic] :eyes:')
-    rag_search = rag_update = rag_retrieval = video_caption = image_caption = talk_2_pdf = pdf_exist = blog_writer = False
+    rag_search = rag_update = rag_retrieval = video_caption = image_caption = talk_2_pdf = pdf_exist = blog_writer = image_argmentation = False
     rag_on = st.select_slider(
         '',
         value='Basic',
@@ -96,6 +96,8 @@ with st.sidebar:
                 st.video(video_bytes)
                 video_caption = True
                 pass
+        else:
+            image_argmentation = True
     elif 'Files' in rag_on:
         upload_docs = st.file_uploader("Upload your pdf/doc/txt files.", accept_multiple_files=True, type=["pdf", "doc", "csv", "json", "txt", "xml"])
         fnames = []
@@ -317,7 +319,7 @@ elif video_caption:
         st.session_state.messages.append({"role": "assistant", "content": msg})
         st.chat_message("ai", avatar='🎥').write(msg)
 
-elif image_caption:
+elif image_caption or image_argmentation:
     if prompt := st.chat_input(placeholder=voice_prompt, on_submit=None, key="user_input"):
         prompt=voice_prompt if prompt==' ' else prompt
         st.session_state.messages.append({"role": "user", "content": prompt})
@@ -362,11 +364,22 @@ elif image_caption:
                 msg = "Image conditioning failed. Make sure the image does not contain sensitive info." + f" Latency: {(time.time() - start_time) * 1000:.2f} ms" 
                 pass
         elif 'generation' in action.lower():
+            if 'titan' in prompt.lower():
                 option = 'amazon.titan-image-generator-v2:0'
-                base64_str = bedrock_imageGen(option, prompt, iheight=1024, iwidth=1024, src_image=None, image_quality='premium', image_n=1, cfg=7.5, seed=random.randint(100, 500000))
+                base64_str = bedrock_imageGen(option, prompt, iheight=1024, iwidth=1024, src_image=None, image_quality='premium', image_n=1, cfg=random.uniform(3.2, 9.0), seed=random.randint(0, 500000))
                 new_image = Image.open(io.BytesIO(base64.decodebytes(bytes(base64_str, "utf-8"))))
                 st.image(new_image, output_format="png", use_column_width='auto')
-                msg = "\n\n ✒︎***Content created by using:*** "+ option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms"
+            elif 'sd3' in prompt.lower() or 'stable diffusion' in prompt.lower():
+                option = 'SD3 Medium' 
+                url = "http://infs.cavatar.info:8083/generate?prompt="
+                new_image = gen_photo_bytes(prompt, url)
+                st.image(new_image, output_format="png", use_column_width='auto')
+            else:
+                option = 'flux.1.dev' #'stability.stable-diffusion-xl-v1:0' # Or 'amazon.titan-image-generator-v1'
+                url = "http://video.cavatar.info:8080/generate?prompt="
+                new_image = gen_photo_bytes(prompt, url)
+                st.image(new_image, output_format="png", use_column_width='auto')
+            msg = "\n\n ✒︎***Content created by using:*** "+ option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms"     
         else:
             if "claude-3-5" in option and not 'anthropic.claude' in option: 
                 msg = anthropic_imageCaption(option, prompt, image, max_token, temperature, top_p, top_k)
@@ -448,16 +461,8 @@ elif (record_audio_bytes and len(voice_prompt) > 1):
             st.chat_message("user").write(prompt)  
 
             action = classify_query(prompt, 'image generation, image upscaling, news, others', 'anthropic.claude-3-haiku-20240307-v1:0')
-            if 'generation' in action:
-                #option = 'amazon.titan-image-generator-v2:0' #'stability.stable-diffusion-xl-v1:0' # Or 'amazon.titan-image-generator-v1'
-                #base64_str = bedrock_imageGen(option, prompt, iheight=1024, iwidth=1024, src_image=None, image_quality='premium', image_n=1, cfg=7.5, seed=random.randint(100, 500000))
-                #new_image = Image.open(io.BytesIO(base64.decodebytes(bytes(base64_str, "utf-8"))))
-                option = 'SD3 Medium' 
-                url = "http://infs.cavatar.info:8083/generate?prompt="
-                new_image = gen_photo_bytes(prompt, url)
-                st.image(new_image, output_format="png", use_column_width='auto')
-                msg = ' '
-            elif 'med42' in option.lower():
+            
+            if 'med42' in option.lower():
                 msg=tgi_textGen2('http://infs.cavatar.info:7861/', prompt, max_token, temperature, top_p, top_k)
             elif 'gpt-4' in option:
                 msg = openai_textGen(option, prompt, max_token, temperature, top_p)
@@ -489,13 +494,7 @@ else:
         st.chat_message("user").write(prompt)
 
         action = classify_query2(prompt, 'anthropic.claude-3-haiku-20240307-v1:0')
-        if 'generation' in action.lower():
-            option = 'flux.1.dev' #'stability.stable-diffusion-xl-v1:0' # Or 'amazon.titan-image-generator-v1'
-            url = "http://video.cavatar.info:8080/generate?prompt="
-            new_image = gen_photo_bytes(prompt, url)
-            st.image(new_image, output_format="png", use_column_width='auto')
-            msg = ' '
-        elif 'llama3-med42-8b' in option.lower():
+        if 'llama3-med42-8b' in option.lower():
             msg = tgi_textGen2('http://infs.cavatar.info:7861/', prompt, max_token, temperature, top_p, top_k)
         elif 'gpt-4' in option:
             msg = openai_textGen(option, prompt, max_token, temperature, top_p)
