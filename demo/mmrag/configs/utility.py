@@ -8,6 +8,7 @@ import shutil
 
 from typing import Optional
 from botocore.config import Config
+from botocore.exceptions import ClientError
 from langchain.llms.bedrock import Bedrock
 from langchain import hub
 from langchain_community.retrievers import AmazonKnowledgeBasesRetriever
@@ -607,7 +608,7 @@ def bedrock_textGen(model_id, prompt, max_tokens, temperature, top_p, top_k, sto
         data = json.loads(response_body)
         return data['content'][0]['text']
 
-    elif 'meta31' in model_id.lower():
+    elif 'llama2' in model_id.lower():
         # Embed the message in Llama 3's prompt format.
         meta_prompt = f"""
         <|begin_of_text|>
