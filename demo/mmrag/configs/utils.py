@@ -646,7 +646,7 @@ def classify_query2(query: str, modelId: str):
     - Generation - Generate a new image out of the input text explicitly call out image genreration or image creation.
     - Background - Remove the background from the input image. 
     - Upscale - Enhance or upscale the image for higher resolution.
-    - Segmentation - Segment out the object identified by the input text out in the input image.
+    - Segmentation - Image segmentation by tdentifying the objects specified in text and creating masks to highlight the input image.
     - Conditioning - Condition the input image and genderate a similiar one guided by the input text.
     - Others - Image understanding and image caption creation.
 Return in the output only one word to represent the top matched type from (GENERATION, BACKGROUND, UPSCALE, SEGMENTATION, CONDITIONING or OTHERS).
@@ -730,7 +730,7 @@ def bedrock_imageGen(model_id:str, prompt:str, iheight:int, iwidth:int, src_imag
                     }
                 }
             )
-    elif 'stability.stable-diffusion' in model_id:
+    elif 'stability:sd3-large' in model_id:
         style_preset = "photographic"  # (e.g. photographic, digital-art, cinematic, ...)
         clip_guidance_preset = "FAST_GREEN" # (e.g. FAST_BLUE FAST_GREEN NONE SIMPLE SLOW SLOWER SLOWEST)
         sampler = "K_DPMPP_2S_ANCESTRAL" # (e.g. DDIM, DDPM, K_DPMPP_SDE, K_DPMPP_2M, K_DPMPP_2S_ANCESTRAL, K_DPM_2, K_DPM_2_ANCESTRAL, K_EULER, K_EULER_ANCESTRAL, K_HEUN, K_LMS)
@@ -764,6 +764,14 @@ def bedrock_imageGen(model_id:str, prompt:str, iheight:int, iwidth:int, src_imag
                 "sampler": sampler,
                 "width": iwidth,
             })
+    elif 'ultra' in model_id:
+        body = json.dumps({
+                "prompt":prompt,
+                "mode": "text-to-image",
+                "aspect_ratio": "1:1",
+                "output_format": "jpeg",
+            })
+            
     bedrock_client = boto3.client("bedrock-runtime",  region_name="us-west-2")
     response = bedrock_client.invoke_model(
         body=body, 
@@ -772,9 +780,9 @@ def bedrock_imageGen(model_id:str, prompt:str, iheight:int, iwidth:int, src_imag
         contentType="application/json"
     )
     response_body = json.loads(response["body"].read())
-    if "amazon.titan-image-generator" in  model_id :
+    if "amazon.titan-image-generator" in model_id or "ultra" in model_id or 'sd3-large' in model_id:
         base64_image_data = response_body["images"][0]
-    elif "stability.stable-diffusion" in  model_id :
+    elif "stability.stable-diffusion" in  model_id:
         base64_image_data = response_body["artifacts"][0].get("base64")
 
     return base64_image_data

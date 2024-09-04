@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from langchain.tools import DuckDuckGoSearchRun
 import boto3
 from langchain_aws import BedrockLLM, ChatBedrock, ChatBedrockConverse
+#from langchain.memory import ConversationBufferMemory, ReadOnlySharedMemory
 from botocore.config import Config
 from crewai_tools import (
     DirectoryReadTool,
@@ -60,20 +61,12 @@ def get_llm(model_id):
             model_kwargs=inference_modifier,
             region_name=aws_region,
         ) 
-    elif 'claude-3' in model_id or 'mistral' in model_id:
+    elif 'claude-3' in model_id or 'mistral' in model_id or 'llama3-1' in model_id:
         llm = ChatBedrockConverse(
             model=model_id,
             client=bedrock_client,
             temperature=0.01,
-            max_tokens=4096,
-            region_name=aws_region,
-        )
-    elif 'llama3-1' in model_id:
-        llm = ChatBedrockConverse(
-            model=model_id,
-            client=bedrock_client,
-            temperature=0.01,
-            max_tokens=4096,
+            max_tokens=2048 if 'llama3-1' in model_id else 4096,
             region_name=aws_region,
         )
     else:
@@ -206,6 +199,12 @@ class blogCrew():
         agents=[planner_agent, writer_agent, editor_agent],
         tasks=[plan_task, write_task, edit_task],
         verbose=True,
+        memory=True,
+        cache=True,
+        embedder={
+            "provider": "huggingface",
+            "config": {"model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"},
+        },
         process=Process.sequential # Sequential process will have tasks executed one after the other and the outcome of the previous one is
     )
 

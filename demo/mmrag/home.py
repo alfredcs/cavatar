@@ -369,10 +369,15 @@ elif image_caption or image_argmentation:
                 base64_str = bedrock_imageGen(option, prompt, iheight=1024, iwidth=1024, src_image=None, image_quality='premium', image_n=1, cfg=random.uniform(3.2, 9.0), seed=random.randint(0, 500000))
                 new_image = Image.open(io.BytesIO(base64.decodebytes(bytes(base64_str, "utf-8"))))
                 st.image(new_image, output_format="png", use_column_width='auto')
-            elif 'sd3' in prompt.lower() or 'stable diffusion' in prompt.lower():
+            elif 'sd3 medium' in prompt.lower() or 'stable diffusion' in prompt.lower():
                 option = 'SD3 Medium' 
                 url = "http://infs.cavatar.info:8083/generate?prompt="
                 new_image = gen_photo_bytes(prompt, url)
+                st.image(new_image, output_format="png", use_column_width='auto')
+            elif 'ultra' in prompt.lower():
+                option = 'stability.stable-image-ultra-v1:0'
+                base64_str = bedrock_imageGen(option, prompt, iheight=1024, iwidth=1024, src_image=None, image_quality='premium', image_n=1, cfg=random.uniform(3.2, 9.0), seed=random.randint(0, 500000))
+                new_image = Image.open(io.BytesIO(base64.decodebytes(bytes(base64_str, "utf-8"))))
                 st.image(new_image, output_format="png", use_column_width='auto')
             else:
                 option = 'flux.1.dev' #'stability.stable-diffusion-xl-v1:0' # Or 'amazon.titan-image-generator-v1'
