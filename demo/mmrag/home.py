@@ -189,6 +189,7 @@ with st.sidebar:
                                               'meta.llama3-1-405b-instruct-v1:0',
                                               'gpt-4o-mini',
                                               'gpt-4o',
+                                              'o1-preview',
                                               'mistral.mistral-large-2407-v1:0',
                                               'FT.Llama3-Med42-8B'))
         
@@ -497,19 +498,19 @@ else:
     if prompt := st.chat_input():
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.chat_message("user").write(prompt)
-        try:
-            action = classify_query2(prompt, 'anthropic.claude-3-haiku-20240307-v1:0')
-            if 'llama3-med42-8b' in option.lower():
-                msg = tgi_textGen2('http://infs.cavatar.info:7861/', prompt, max_token, temperature, top_p, top_k)
-            elif 'gpt-4' in option:
-                msg = openai_textGen(option, prompt, max_token, temperature, top_p)
-            elif 'claude-3-5' in option and not 'anthropic.claude' in option:
-                msg = anthropic_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences)
-            else:
-                msg=str(bedrock_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences))
-        except:
-            msg = "Server error. Check the model access permision"
-            pass
+        #try:
+        action = classify_query2(prompt, 'anthropic.claude-3-haiku-20240307-v1:0')
+        if 'llama3-med42-8b' in option.lower():
+            msg = tgi_textGen2('http://infs.cavatar.info:7861/', prompt, max_token, temperature, top_p, top_k)
+        elif 'gpt-4' in option or 'o1' in option:
+            msg = openai_textGen(option, prompt, max_token, temperature, top_p)
+        elif 'claude-3-5' in option and not 'anthropic.claude' in option:
+            msg = anthropic_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences)
+        else:
+            msg=str(bedrock_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences))
+        #except:
+        #    msg = "Server error. Check the model access permision"
+        #    pass
         msg += "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.messages.append({"role": "assistant", "content": msg})
         st.chat_message("ai", avatar='🤵').write(msg)

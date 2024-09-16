@@ -3,8 +3,11 @@ import boto3
 import random
 import time
 import os
+import sys
+import textwrap
 import requests
 import shutil
+from io import StringIO
 
 from typing import Optional
 from botocore.config import Config
@@ -15,10 +18,14 @@ from langchain_community.retrievers import AmazonKnowledgeBasesRetriever
 from langchain_community.chat_models import BedrockChat
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain.chains import create_history_aware_retriever, create_retrieval_chain
+from langchain_core.chat_history import InMemoryChatMessageHistory
+from langchain_core.runnables.config import RunnableConfig
 
-from langchain_core.runnables import RunnableParallel
+from langchain_core.runnables import RunnableParallel, Runnable, RunnableLambda, RunnablePassthrough
 from langchain.prompts import ChatPromptTemplate
-
+from langchain_aws import BedrockLLM, ChatBedrock, ChatBedrockConverse
 
 config_filename = '.aoss_config.txt'
 suffix = random.randrange(200, 900)
@@ -47,7 +54,23 @@ bedrock_execution_role_name = f'AmazonBedrockExecutionRoleForKnowledgeBase_{suff
 fm_policy_name = f'AmazonBedrockFoundationModelPolicyForKnowledgeBase_{suffix}'
 s3_policy_name = f'AmazonBedrockS3PolicyForKnowledgeBase_{suffix}'
 oss_policy_name = f'AmazonBedrockOSSPolicyForKnowledgeBase_{suffix}'
+session_id = f'session_{random.randint(1,100)}'
 
+
+
+def print_ww(*args, width: int = 100, **kwargs):
+    """Like print(), but wraps output to `width` characters (default 100)"""
+    buffer = StringIO()
+    try:
+        _stdout = sys.stdout
+        sys.stdout = buffer
+        print(*args, **kwargs)
+        output = buffer.getvalue()
+    finally:
+        sys.stdout = _stdout
+    for line in output.splitlines():
+        print("\n".join(textwrap.wrap(line, width=width)))
+        
 
 def get_bedrock_client(
     assumed_role: Optional[str] = None,
@@ -659,3 +682,90 @@ def bedrock_textGen(model_id, prompt, max_tokens, temperature, top_p, top_k, sto
             return {e}
     else:
         return f"Incorrect Bedrock model ID {model_id.lower()} selected!"
+
+def bedrock_textGen_converse(model_id, prompt, max_tokens, temperature, top_p, top_k, stop_sequences):
+    '''
+    chatbedrock_llm = ChatBedrockConverse(
+        model=model_id,
+        client=bedrock_client,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        region_name=region_name,
+    )
+    '''
+    
+    model_parameter = {"temperature": temperature, "top_p": top_p, "max_tokens_to_sample": max_tokens}
+    chatbedrock_llm = ChatBedrock(
+        model_id=model_id,
+        client=bedrock_client,
+        model_kwargs=model_parameter, 
+        beta_use_converse_api=True
+    )
+    
+    prompt_with_history = ChatPromptTemplate.from_messages(
+        [
+            ("system", "You are a seasoned professional who can answer the following questions as best you can."),
+            ("placeholder", "{chat_history}"),
+            ("user", "{input}"),
+        ]
+    )
+    
+    history = InMemoryChatMessageHistory()
+    
+    def get_history():
+        return history
+
+    # - add the history to the in-memory chat history
+    class ChatHistoryAdd(Runnable):
+        def __init__(self, chat_history):
+            self.chat_history = chat_history
+    
+        def invoke(self, input: str, config: RunnableConfig = None) -> str:
+            try:
+                print_ww(f"ChatHistoryAdd::config={config}::history_object={self.chat_history}::input={input}::")
+                
+                self.chat_history.add_ai_message(input.content)
+                return input
+            except Exception as e:
+                return f"Error processing input: {str(e)}"
+    
+    # Usage
+    chat_add = ChatHistoryAdd(get_history())
+    
+    #- second way to create a callback runnable function--
+    def ChatUserInputAdd(input_dict: dict, config: RunnableConfig) -> dict:
+        print_ww(f"ChatUserAdd::input_dict:{input_dict}::config={config}") #- if we do dict at start of chain -- {'input': {'input': 'what is the weather like in Seattle WA?', 'chat_history':
+        get_history().add_user_message(input_dict['input']) 
+        return input_dict # return the text as is
+    
+    chat_user_add = RunnableLambda(ChatUserInputAdd)
+
+    #to create a callback runnable function--
+    def get_chat_history(input_dict: dict, config: RunnableConfig) -> dict:
+        print(f"get_chat_history::input_dict:{input_dict}::config={config}") #- if we do dict at start of chain -- {'input': {'input': 'what is the weather like in Seattle WA?', 'chat_history':
+        return get_history().messages # return the text as is
+    
+    chat_history_get = RunnableLambda(get_chat_history)
+    
+    history_chain = (
+        #- Expected a Runnable, callable or dict. If we use a dict here make sure every element is a runnable. And further access is via 'input'.'input'
+        { # make sure all variable in the prompt template are in this dict
+            "input": RunnablePassthrough(),
+            "chat_history": chat_history_get
+        }
+        | chat_user_add
+        | prompt_with_history
+        | chatbedrock_llm
+        | chat_add
+        | StrOutputParser()
+    )
+
+    response = history_chain.invoke( # here the variable matches the chat prompt template
+        prompt, 
+        config={"configurable": {"session_id": session_id}}
+    )
+    json_str = response.replace('AIMessage ', '')
+    data = json.loads(json_str)
+    
+    # Extract the content
+    return  data['content']
