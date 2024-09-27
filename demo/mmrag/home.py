@@ -3,6 +3,7 @@ from audio_recorder_streamlit import audio_recorder
 import sys
 import os
 import io
+import re
 import json
 import random
 from PIL import Image
@@ -151,6 +152,8 @@ with st.sidebar:
                                               'anthropic.claude-3-sonnet-20240229-v1:0',
                                                'anthropic.claude-3-opus-20240229-v1:0',
                                                'anthropic.claude-3-5-sonnet-20240620-v1:0',
+                                               "meta.llama3-2-90b-instruct-v1:0",
+                                               "llama32_11b_vision_instruct",
                                                #'claude-3-5-sonnet-20240620',
                                                'gpt-4o-mini',
                                                'gpt-4o',
@@ -186,10 +189,11 @@ with st.sidebar:
                                               'anthropic.claude-3-5-sonnet-20240620-v1:0',
                                               #'claude-3-5-sonnet-20240620',
                                               'meta.llama3-1-70b-instruct-v1:0',
+                                              "meta.llama3-2-11b-instruct-v1:0",
                                               'meta.llama3-1-405b-instruct-v1:0',
                                               'gpt-4o-mini',
                                               'gpt-4o',
-                                              'o1-preview',
+                                              'o1-mini',
                                               'mistral.mistral-large-2407-v1:0',
                                               'FT.Llama3-Med42-8B'))
         
@@ -391,6 +395,20 @@ elif image_caption or image_argmentation:
                 msg = anthropic_imageCaption(option, prompt, image, max_token, temperature, top_p, top_k)
             elif "gpt-4" in option:
                 msg = openai_image_getDescription(option, prompt, image, max_token, temperature, top_p)
+            elif "llama32_11b" in option:
+                url = "http://video.cavatar.info:8081/generate"
+                #files = {'file': ('image.jpg', bytes_data, 'image/jpeg')}
+                files = {'file': ('image.png', image, 'image/png')}
+                data = {'prompt': prompt}
+                #response = requests.post(url, headers={'accept': 'application/json', 'Content-Type': 'multipart/form-data'}, files=files, data=data)
+                response = requests.post(url, headers={'accept': 'application/json'}, files=files, data=data)
+                if response.status_code == 200:
+                    text_o = response.json().replace("<|", "{").replace("|>", "}")
+                    msg = json.dumps(text_o, indent=2)
+                    #matches = re.findall(r'<\|eot_id\|(.*?)<\|eot_id\|>', text_o, re.DOTALL)
+                    #msg = ''.join([match.replace('<|start_header_id|>assistant<|end_header_id|>\n\n', '').strip() for match in matches])
+                else:
+                    msg = "Call Llama 3.2 11B fast_api failed."
             else:
                 msg = bedrock_get_img_description(option, prompt, image, max_token, temperature, top_p, top_k, stop_sequences)
             width, height = Image.open(image).size

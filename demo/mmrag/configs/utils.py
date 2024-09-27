@@ -642,11 +642,11 @@ def classify_query(query, classes: str, modelId: str):
         return "Error"
 
 def classify_query2(query: str, modelId: str):
-    question_category_prompt = '''You are a senior specialist of analytical support. Your task is to classify precisely the incoming questions to match the type. Depending on your answer, question will be routed to the right action based on your type choice, so your task is crucial. There are 6 possible question types: 
+    question_category_prompt = '''You are a seasoned text classifier and your task is to classify precisely the incoming questions to match the action type. Depending on your answer, question will be routed to the right action based on your type choice, so your task is crucial. There are 6 possible question types: 
     - Generation - Generate a new image out of the input text explicitly call out image genreration or image creation.
     - Background - Remove the background from the input image. 
     - Upscale - Enhance or upscale the image for higher resolution.
-    - Segmentation - Image segmentation by tdentifying the objects specified in text and creating masks to highlight the input image.
+    - Segmentation - To segment out the objects specified in text and creating masks.
     - Conditioning - Condition the input image and genderate a similiar one guided by the input text.
     - Others - Image understanding and image caption creation.
 Return in the output only one word to represent the top matched type from (GENERATION, BACKGROUND, UPSCALE, SEGMENTATION, CONDITIONING or OTHERS).
