@@ -1154,3 +1154,22 @@ def pred_image_bytes(image_bytes, prompt):
     else:
         print(f"Error calling SAM2 from {url}")
         return None
+
+# -- llama 3.x pretty print
+def llama_pretty_print(text):
+    # Find the start of the assistant's response
+    start = text.find("<|start_header_id|>assistant<|end_header_id|>\n\n")
+    if start == -1:
+        return "Assistant's response not found."
+
+    # Extract the content between the start and end tags
+    content = text[start + len("<|start_header_id|>assistant<|end_header_id|>\n\n"):]
+    end = content.rfind("<|eot_id|>")
+    if end != -1:
+        content = content[:end]
+
+    # Remove any remaining tags
+    content = re.sub(r'<\|.*?\|>', '', content)
+
+    # Strip leading/trailing whitespace and return
+    return content.strip()

@@ -28,7 +28,7 @@ from utility import *
 from utils import *
 from video_captioning import *
 from anthropic_tools import *
-from sam2 import *
+#from sam2 import *
 
 
 st.set_page_config(page_title="GenAide",page_icon="🩺",layout="wide")
@@ -82,6 +82,7 @@ with st.sidebar:
         rag_search = True
     elif 'Multimodal' in rag_on:
         upload_file = st.file_uploader("Upload your image/video here.", accept_multiple_files=False, type=["jpg", "png", "webp", "mp4", "mov"])
+        image_url = st.text_input("Or Input Image/Video URL", key="image_url", type="default")
         if upload_file is not None:
             # Check if the uploaded file is an image
             try:
@@ -97,6 +98,22 @@ with st.sidebar:
                 st.video(video_bytes)
                 video_caption = True
                 pass
+        elif len(image_url)>4:
+            try:
+                image = fetch_image_from_url(image_url)
+                st.image(image)
+                image_caption = True
+            except:
+                response = requests.get(image_url, stream=True)
+                video_bytes = response.content
+                with open(video_file_name, 'wb') as f:
+                    f.write(video_bytes)
+                st.video(video_bytes)
+                video_caption = True
+                pass
+                #msg = 'Failed to download image, please check permission.'
+                #st.session_state.messages.append({"role": "assistant", "content": msg})
+                #st.chat_message("ai").write(msg)
         else:
             image_argmentation = True
     elif 'Files' in rag_on:
@@ -348,16 +365,16 @@ elif image_caption or image_argmentation:
             except:
                 msg = "Image background removal failed. Make sure the image does not contain sensitive info." + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
                 pass
-        elif 'segmentation' in action.lower():
-            try:
-                #new_image = pred_image_bytes(bytes_data, prompt)
-                new_image, new_mask = seg_image(bytes_data, prompt)
-                st.image(new_image, output_format="png", use_column_width='auto')
-                st.image(new_mask, output_format="png", use_column_width='auto')
-                msg = "\n\n ✒︎***Content created by using:*** EVF-SAM2 " + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
-            except:
-                msg = "SAM2 server timeout. Please check image format and size and retry. " + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
-                pass
+        #elif 'segmentation' in action.lower():
+        #    try:
+        #       #new_image = pred_image_bytes(bytes_data, prompt)
+        #        new_image, new_mask = seg_image(bytes_data, prompt)
+        #        st.image(new_image, output_format="png", use_column_width='auto')
+        #        st.image(new_mask, output_format="png", use_column_width='auto')
+        #        msg = "\n\n ✒︎***Content created by using:*** EVF-SAM2 " + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
+        #    except:
+        #        msg = "SAM2 server timeout. Please check image format and size and retry. " + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
+        #        pass
         elif 'conditioning' in action.lower():
             try:
                 option = 'amazon.titan-image-generator-v2:0'
@@ -403,8 +420,7 @@ elif image_caption or image_argmentation:
                 #response = requests.post(url, headers={'accept': 'application/json', 'Content-Type': 'multipart/form-data'}, files=files, data=data)
                 response = requests.post(url, headers={'accept': 'application/json'}, files=files, data=data)
                 if response.status_code == 200:
-                    text_o = response.json().replace("<|", "{").replace("|>", "}")
-                    msg = json.dumps(text_o, indent=2)
+                    msg =json.dumps(response.json(), indent=3)
                     #matches = re.findall(r'<\|eot_id\|(.*?)<\|eot_id\|>', text_o, re.DOTALL)
                     #msg = ''.join([match.replace('<|start_header_id|>assistant<|end_header_id|>\n\n', '').strip() for match in matches])
                 else:

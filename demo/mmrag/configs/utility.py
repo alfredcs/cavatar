@@ -2,10 +2,13 @@ import json
 import boto3
 import random
 import time
+
 import os
+import io
 import sys
 import textwrap
 import requests
+import urllib.request
 import shutil
 from io import StringIO
 
@@ -71,6 +74,14 @@ def print_ww(*args, width: int = 100, **kwargs):
     for line in output.splitlines():
         print("\n".join(textwrap.wrap(line, width=width)))
         
+def fetch_image_from_url(url:str):
+    with urllib.request.urlopen(url) as url_response:
+        # Read the image data from the URL response
+        image_data = url_response.read()
+        # Convert the image data to a BytesIO object
+        image_stream = io.BytesIO(image_data)
+        # Open the image using PIL
+        return image_stream
 
 def get_bedrock_client(
     assumed_role: Optional[str] = None,
