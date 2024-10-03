@@ -6,6 +6,7 @@ import io
 import re
 import json
 import random
+import magic
 from PIL import Image
 from io import BytesIO
 import base64
@@ -112,13 +113,10 @@ with st.sidebar:
                     st.video(video_bytes)
                     video_caption = True
                 except:
-                    error_msg = 'Failed to download image, please check permission.'
+                    error_msg = 'Failed to download image/video, please check permission.'
                     st.session_state.messages.append({"role": "assistant", "content": error_msg})
                     pass
-                pass
-                #msg = 'Failed to download image, please check permission.'
-                #st.session_state.messages.append({"role": "assistant", "content": msg})
-                #st.chat_message("ai").write(msg)
+
         else:
             image_argmentation = True
     elif 'Files' in rag_on:
