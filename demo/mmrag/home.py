@@ -104,12 +104,17 @@ with st.sidebar:
                 st.image(image)
                 image_caption = True
             except:
-                response = requests.get(image_url, stream=True)
-                video_bytes = response.content
-                with open(video_file_name, 'wb') as f:
-                    f.write(video_bytes)
-                st.video(video_bytes)
-                video_caption = True
+                try:
+                    response = requests.get(image_url, stream=True)
+                    video_bytes = response.content
+                    with open(video_file_name, 'wb') as f:
+                        f.write(video_bytes)
+                    st.video(video_bytes)
+                    video_caption = True
+                except:
+                    error_msg = 'Failed to download image, please check permission.'
+                    st.session_state.messages.append({"role": "assistant", "content": error_msg})
+                    pass
                 pass
                 #msg = 'Failed to download image, please check permission.'
                 #st.session_state.messages.append({"role": "assistant", "content": msg})
@@ -420,9 +425,9 @@ elif image_caption or image_argmentation:
                 #response = requests.post(url, headers={'accept': 'application/json', 'Content-Type': 'multipart/form-data'}, files=files, data=data)
                 response = requests.post(url, headers={'accept': 'application/json'}, files=files, data=data)
                 if response.status_code == 200:
-                    msg =json.dumps(response.json(), indent=3)
-                    #matches = re.findall(r'<\|eot_id\|(.*?)<\|eot_id\|>', text_o, re.DOTALL)
-                    #msg = ''.join([match.replace('<|start_header_id|>assistant<|end_header_id|>\n\n', '').strip() for match in matches])
+                    response_string =json.dumps(response.json(), indent=3)
+                    matches = re.findall(r'<\|eot_id\|>(.*?)<\|eot_id\|>', response_string, re.DOTALL)
+                    msg = (''.join([re.sub(r'<\|start_header_id\|>(.*?)<\|end_header_id\|>\\n\\n', '', match).strip() for match in matches])).replace("\\n\\n", "\n\r").replace("\\n", "\n")
                 else:
                     msg = "Call Llama 3.2 11B fast_api failed."
             else:
