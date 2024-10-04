@@ -293,7 +293,8 @@ def get_asr(audio_filename):
     if file_size == 0:
         return 'No audio.'
     # Set the API endpoint
-    url = 'http://infs.cavatar.info:8081/asr?task=transcribe&encode=true&output=txt'
+    #url = 'http://infs.cavatar.info:8081/asr?task=transcribe&encode=true&output=txt'
+    url = 'http://video.cavatar.info:8082/generate'
     # Define headers
     headers = {
         'Accept': 'application/json',
@@ -307,11 +308,13 @@ def get_asr(audio_filename):
 
     # Make the POST request
     response = requests.post(url, headers=headers, files=files)
-    output = response.text.rstrip()
+    #output = response.text.rstrip() # if using infs.cavatar.info:8081
+    output =json.dumps(response.json(), indent=3).replace('"', '')
     if output == "Thank you." or output == "Bye.":
         return ""
     else:
         return output
+
 
 '''
 def bedrock_textGen(model_id, prompt, max_tokens, temperature, top_p, top_k, stop_sequences):

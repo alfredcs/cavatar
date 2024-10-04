@@ -955,6 +955,8 @@ def estimate_tokens(text, method="max"):
     if text is None:
         word_count = char_count = 0
     else:
+        if isinstance(text, set):
+            text = str(sorted(list(text)))
         word_count = len(text.split())
         char_count = len(text)
 

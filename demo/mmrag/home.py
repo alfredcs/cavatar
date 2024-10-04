@@ -107,11 +107,12 @@ with st.sidebar:
             except:
                 try:
                     response = requests.get(image_url, stream=True)
-                    video_bytes = response.content
-                    with open(video_file_name, 'wb') as f:
-                        f.write(video_bytes)
-                    st.video(video_bytes)
-                    video_caption = True
+                    if response.status_code == 200 and response.content:
+                        video_bytes = response.content
+                        with open(video_file_name, 'wb') as f:
+                            f.write(video_bytes)
+                        st.video(video_bytes)
+                        video_caption = True
                 except:
                     error_msg = 'Failed to download image/video, please check permission.'
                     st.session_state.messages.append({"role": "assistant", "content": error_msg})
@@ -245,6 +246,7 @@ with st.sidebar:
             audio_file.write(record_audio_bytes)
         if os.path.exists(temp_audio_file):
             voice_prompt = get_asr(temp_audio_file)
+            #voice_prompt = voice_prompt.encode("utf-8").decode("utf-8")
     st.caption("Press space and hit ↩️ for asr activation")
         
     # ---- Clear chat history ----
@@ -514,6 +516,8 @@ elif (record_audio_bytes and len(voice_prompt) > 1):
             #elif 'generate imagetextGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences)' in classify_query(prompt, 'generate image, news, others', 'anthropic.claude-3-haiku-20240307-v1:0'):
             else:
                 msg=bedrock_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences)
+            if isinstance(msg, set):
+                msg = str(sorted(list(msg)))
             msg += "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
             st.session_state.messages.append({"role": "assistant", "content": msg})
             st.chat_message("ai", avatar='🎙️').write(msg)
