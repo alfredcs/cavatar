@@ -72,7 +72,7 @@ if not check_password():
 with st.sidebar:
     #----- RAG  ------ 
     st.header(':green[Choose a topic] :eyes:')
-    rag_search = rag_update = rag_retrieval = video_caption = image_caption = talk_2_pdf = pdf_exist = blog_writer = image_argmentation = False
+    rag_search = rag_update = rag_retrieval = video_caption = image_caption = audio_transcibe = talk_2_pdf = pdf_exist = blog_writer = image_argmentation = False
     rag_on = st.select_slider(
         '',
         value='Basic',
@@ -82,42 +82,49 @@ with st.sidebar:
         embedding_model_id = st.selectbox('Choose Embedding Model',('amazon.titan-embed-g1-text-02', 'amazon.titan-embed-image-v1'))
         rag_search = True
     elif 'Multimodal' in rag_on:
-        upload_file = st.file_uploader("Upload your image/video here.", accept_multiple_files=False, type=["jpg", "png", "webp", "mp4", "mov"])
-        image_url = st.text_input("Or Input Image/Video URL", key="image_url", type="default")
+        upload_file = st.file_uploader("Upload your image/video here.", accept_multiple_files=False, type=["jpg", "png", "webp", "mp4", "mov", "mp3", "wav"])
+        image_url = st.text_input("Or Input Image/Video/Audio URL", key="image_url", type="default")
         if upload_file is not None:
             # Check if the uploaded file is an image
-            try:
+            _, upload_file_extension = os.path.splitext(upload_file.name)
+            if upload_file_extension in [".mp3", ".wav"]:
+                audio_bytes = upload_file.read()
+                with open(temp_audio_file, 'wb') as audio_file:
+                    audio_file.write(audio_bytes)
+                st.audio(audio_bytes, format="audio/wav")
+                audio_transcibe = True
+            elif upload_file_extension in [".jpg", ".png", ".webp"]:
                 bytes_data = upload_file.read()
                 image =  (io.BytesIO(bytes_data))
                 st.image(image)
                 image_caption = True
-            except:
+            elif upload_file_extension in [".mp4", ".mov"]:
                 # Check if the uploaded file is a video
                 video_bytes = upload_file.getvalue()
                 with open(video_file_name, 'wb') as f:
                     f.write(video_bytes)
                 st.video(video_bytes)
                 video_caption = True
-                pass
         elif len(image_url)>4:
-            try:
-                image = fetch_image_from_url(image_url)
+            response = requests.get(image_url, stream=True)
+            if response.status_code == 200 and 'audio' in response.headers.get('Content-Type'):
+                with open(temp_audio_file, 'wb') as audio_file:
+                    for chunk in response.iter_content(chunk_size=1024):
+                        audio_file.write(chunk)
+                st.audio(response.content, format="audio/wav")
+                audio_transcibe = True
+            elif response.status_code == 200 and 'image' in response.headers.get('Content-Type'):
+                image_data = response.content
+                # Convert the image data to a BytesIO object
+                image = io.BytesIO(image_data)
                 st.image(image)
                 image_caption = True
-            except:
-                try:
-                    response = requests.get(image_url, stream=True)
-                    if response.status_code == 200 and response.content:
-                        video_bytes = response.content
-                        with open(video_file_name, 'wb') as f:
-                            f.write(video_bytes)
-                        st.video(video_bytes)
-                        video_caption = True
-                except:
-                    error_msg = 'Failed to download image/video, please check permission.'
-                    st.session_state.messages.append({"role": "assistant", "content": error_msg})
-                    pass
-
+            elif response.status_code == 200 and 'video' in response.headers.get('Content-Type'):
+                video_bytes = response.content
+                with open(video_file_name, 'wb') as f:
+                    f.write(video_bytes)
+                st.video(video_bytes)
+                video_caption = True
         else:
             image_argmentation = True
     elif 'Files' in rag_on:
@@ -144,7 +151,7 @@ with st.sidebar:
                 json_data = json.loads(string_data)
                 st.json(json_data)
             else:
-                st.write(bytes_data)
+                st.write(bytes_data[:1000]+"......".encode())
         except:
             pass
     elif 'Insert' in rag_on:
@@ -247,6 +254,7 @@ with st.sidebar:
         if os.path.exists(temp_audio_file):
             voice_prompt = get_asr(temp_audio_file)
             #voice_prompt = voice_prompt.encode("utf-8").decode("utf-8")
+            voice_prompt = "" if voice_prompt.lower() in ['please stop audio.', 'stop audio.'] else voice_prompt
     st.caption("Press space and hit ↩️ for asr activation")
         
     # ---- Clear chat history ----
@@ -345,7 +353,30 @@ elif video_caption:
         msg += "\n\n 🔊***Audio transcribe:*** " + audio_transcribe + "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {tokens}+{estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.messages.append({"role": "assistant", "content": msg})
         st.chat_message("ai", avatar='🎥').write(msg)
-
+###
+# Audio
+###
+elif audio_transcibe:
+    if prompt := st.chat_input(placeholder=voice_prompt, on_submit=None, key="user_input"):
+        prompt=voice_prompt if prompt==' ' else prompt
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        st.chat_message("user").write(prompt)
+    asr_text = get_asr(temp_audio_file)
+    prompt2 = f"{prompt}. Your answer should be strictly based on the context in {asr_text}."
+    if 'claude-3-5' in option and not 'anthropic.claude' in option:
+        msg = anthropic_textGen(option, prompt2, max_token, temperature, top_p, top_k, stop_sequences)
+    elif 'gpt-4' in option:
+        msg = openai_textGen(option, prompt2, max_token, temperature, top_p)
+    elif 'med42' in option.lower():
+        msg = tgi_textGen2('http://infs.cavatar.info:7861/', prompt2[:8000], max_token, temperature, top_p, top_k)
+    else:
+        msg = bedrock_textGen(option, prompt2, max_token, temperature, top_p, top_k, stop_sequences)
+    msg += "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
+    st.session_state.messages.append({"role": "assistant", "content": msg})
+    st.chat_message("ai", avatar='🔊').write(msg)
+###
+# Image
+###
 elif image_caption or image_argmentation:
     if prompt := st.chat_input(placeholder=voice_prompt, on_submit=None, key="user_input"):
         prompt=voice_prompt if prompt==' ' else prompt
@@ -437,7 +468,9 @@ elif image_caption or image_argmentation:
             msg += "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {tokens}+{estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.messages.append({"role": "assistant", "content": msg})
         st.chat_message("ai", avatar='🖼️').write(msg)
+###
 # Pdf parser        
+###      
 elif talk_2_pdf: 
     if prompt := st.chat_input(placeholder=voice_prompt, on_submit=None, key="user_input"):
         prompt=voice_prompt if prompt==' ' else prompt
