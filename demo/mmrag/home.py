@@ -12,6 +12,7 @@ from io import BytesIO
 import base64
 import time
 import hmac
+import numpy as np
 from streamlit_pdf_viewer import pdf_viewer
 from concurrent.futures import ThreadPoolExecutor
 
@@ -29,6 +30,7 @@ from utility import *
 from utils import *
 from video_captioning import *
 from anthropic_tools import *
+#from extract_urls import *
 #from sam2 import *
 
 
@@ -72,7 +74,7 @@ if not check_password():
 with st.sidebar:
     #----- RAG  ------ 
     st.header(':green[Choose a topic] :eyes:')
-    rag_search = rag_update = rag_retrieval = video_caption = image_caption = audio_transcibe = talk_2_pdf = pdf_exist = blog_writer = image_argmentation = False
+    rag_search = rag_update = rag_retrieval = video_caption = image_caption = audio_transcibe = talk_2_pdf = pdf_exist = file_url_exist = blog_writer = image_argmentation = False
     rag_on = st.select_slider(
         '',
         value='Basic',
@@ -129,31 +131,40 @@ with st.sidebar:
             image_argmentation = True
     elif 'Files' in rag_on:
         upload_docs = st.file_uploader("Upload your pdf/doc/txt files.", accept_multiple_files=True, type=["pdf", "doc", "csv", "json", "txt", "xml"])
+        #file_urls = st.text_input("Or input URLs seperated by ','", key="file_urls", type="default")
         fnames = []
-        try:
-            # pdf
-            empty_directory(file_path)
-            upload_doc_names = [file.name for file in upload_docs]
-            for upload_doc in upload_docs:
-                bytes_data = upload_doc.read()
-                fnames.append(upload_doc.name)
-                full_filename = file_path+upload_doc.name
-                if os.path.isfile(full_filename):
-                    pdf_exist = True
+        #embedding_model_id = st.selectbox('Choose Embedding Model',('amazon.titan-embed-g1-text-02', 'amazon.titan-embed-image-v1'))
+        if upload_docs is not None:
+            try:
+                # pdf
+                empty_directory(file_path)
+                upload_doc_names = [file.name for file in upload_docs]
+                for upload_doc in upload_docs:
+                    bytes_data = upload_doc.read()
+                    fnames.append(upload_doc.name)
+                    full_filename = file_path+upload_doc.name
+                    if os.path.isfile(full_filename):
+                        pdf_exist = True
+                    else:
+                        with open(full_filename, 'wb') as f:
+                            f.write(bytes_data)
+                talk_2_pdf = True
+                if is_pdf(full_filename):
+                    pdf_viewer(input=bytes_data, width=1200)
+                elif 'json' in upload_doc.name and isinstance(bytes_data, bytes):
+                    string_data = bytes_data.decode('utf-8')
+                    json_data = json.loads(string_data)
+                    st.json(json_data)
                 else:
-                    with open(full_filename, 'wb') as f:
-                        f.write(bytes_data)
-            talk_2_pdf = True
-            if is_pdf(full_filename):
-                pdf_viewer(input=bytes_data, width=1200)
-            elif 'json' in upload_doc.name and isinstance(bytes_data, bytes):
-                string_data = bytes_data.decode('utf-8')
-                json_data = json.loads(string_data)
-                st.json(json_data)
-            else:
-                st.write(bytes_data[:1000]+"......".encode())
-        except:
-            pass
+                    st.write(bytes_data[:1000]+"......".encode())
+            except:
+                pass
+        #elif file_urls is not None and len(file_urls) > 4:
+        #    file_url_list = file_urls.split(",")
+        #    #page_image = url_to_image(file_url_list[0])
+        #    #if page_image is not None:
+        #    #    pdf_viewer(input=pdf_bytes, width=1200)
+        #    file_url_exist = True
     elif 'Insert' in rag_on:
         upload_docs = st.file_uploader("Upload your doc here", accept_multiple_files=True, type=['pdf', 'doc', 'jpg', 'png'])
         # Amazon Bedrock KB only supports titan-embed-text-v1 not g1-text-02
@@ -229,7 +240,7 @@ with st.sidebar:
     temperature = st.number_input("Temperature", min_value=0.0, max_value=1.0, value=0.1, step=0.05)
     max_token = st.number_input("Maximum Output Token", min_value=0, value=2048, step=64)
     top_p = st.number_input("Top_p: The cumulative probability cutoff for token selection", min_value=0.1, value=0.85)
-    top_k = st.number_input("Top_k: Sample from the k most likely next tokens at each step", min_value=1, value=40)
+    top_k = st.number_input("Top_k: Sample from the k most likely next tokens at each step", min_value=1, value=20)
     #candidate_count = st.number_input("Number of generated responses to return", min_value=1, value=1)
     stop_sequences = st.text_input("The set of character sequences (up to 5) that will stop output generation", value="\n\n\nHuman")
 
@@ -361,19 +372,25 @@ elif audio_transcibe:
         prompt=voice_prompt if prompt==' ' else prompt
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.chat_message("user").write(prompt)
-    asr_text = get_asr(temp_audio_file)
-    prompt2 = f"{prompt}. Your answer should be strictly based on the context in {asr_text}."
-    if 'claude-3-5' in option and not 'anthropic.claude' in option:
-        msg = anthropic_textGen(option, prompt2, max_token, temperature, top_p, top_k, stop_sequences)
-    elif 'gpt-4' in option:
-        msg = openai_textGen(option, prompt2, max_token, temperature, top_p)
-    elif 'med42' in option.lower():
-        msg = tgi_textGen2('http://infs.cavatar.info:7861/', prompt2[:8000], max_token, temperature, top_p, top_k)
-    else:
-        msg = bedrock_textGen(option, prompt2, max_token, temperature, top_p, top_k, stop_sequences)
-    msg += "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
-    st.session_state.messages.append({"role": "assistant", "content": msg})
-    st.chat_message("ai", avatar='🔊').write(msg)
+        asr_text = get_asr(temp_audio_file)
+        prompt2 = f"{prompt}. Your answer should be strictly based on the context in {asr_text}."
+        if 'claude-3-5' in option and not 'anthropic.claude' in option:
+            msg = anthropic_textGen(option, prompt2, max_token, temperature, top_p, top_k, stop_sequences)
+        elif 'gpt-4' in option:
+            msg = openai_textGen(option, prompt2, max_token, temperature, top_p)
+        elif 'med42' in option.lower():
+            msg = tgi_textGen2('http://infs.cavatar.info:7861/', prompt2[:8000], max_token, temperature, top_p, top_k)
+        else:
+            msg = bedrock_textGen(option, prompt2, max_token, temperature, top_p, top_k, stop_sequences)
+        msg += "\n\n ✒︎***Audio Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
+        st.session_state.messages.append({"role": "assistant", "content": msg})
+        st.chat_message("ai", avatar='🔊').write(msg)
+        # Ouptut TTS
+        #url = "http://video.cavatar.info:8085/tts_generate?prompt="
+        #response = requests.post(url+msg)
+        #if response.status_code == 200:
+        #    tts_tensor_restored =  np.load(io.BytesIO(response.content))
+        #    st.audio(tts_tensor_restored, format="audio/wav", sample_rate=32000)
 ###
 # Image
 ###
@@ -421,7 +438,7 @@ elif image_caption or image_argmentation:
             except:
                 msg = "Image conditioning failed. Make sure the image does not contain sensitive info." + f" Latency: {(time.time() - start_time) * 1000:.2f} ms" 
                 pass
-        elif 'generation' in action.lower():
+        elif 'image generation' in action.lower():
             if 'titan' in prompt.lower():
                 option = 'amazon.titan-image-generator-v2:0'
                 base64_str = bedrock_imageGen(option, prompt, iheight=1024, iwidth=1024, src_image=None, image_quality='premium', image_n=1, cfg=random.uniform(3.2, 9.0), seed=random.randint(0, 500000))
@@ -443,6 +460,27 @@ elif image_caption or image_argmentation:
                 new_image = gen_photo_bytes(prompt, url)
                 st.image(new_image, output_format="png", use_column_width='auto')
             msg = "\n\n ✒︎***Content created by using:*** "+ option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms"     
+        elif 'video generation' in action.lower():
+            option = 'T2V-Turbo_v2'
+            url = "http://video.cavatar.info:8083/video_generate?prompt="
+            response = requests.post(url+prompt)
+            if response.status_code == 200:
+                mp4_bytes = response.content
+                st.video(mp4_bytes)
+                msg = "\n\n ✒︎***Content created by using:*** "+ option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms"  
+            else:
+                msg = f"Error generating video from {url}"
+        elif 'music generation' in action.lower():
+            option2 = 'MusicGen-Large'
+            url = "http://video.cavatar.info:8084/music_generate?prompt="
+            music_prompt = prompt+'&length='+str(top_k)
+            response = requests.post(url+music_prompt)
+            if response.status_code == 200:
+                audio_tensor_restored =  np.load(io.BytesIO(response.content))
+                st.audio(audio_tensor_restored, format="audio/wav", sample_rate=32000)
+                msg = "\n\n ✒︎***Content created by using:*** "+ option2 + f", Latency: {(time.time() - start_time) * 1000:.2f} ms"  
+            else:
+                msg = f"Error generating music from {url} Latency: {(time.time() - start_time) * 1000:.2f} ms" 
         else:
             if "claude-3-5" in option and not 'anthropic.claude' in option: 
                 msg = anthropic_imageCaption(option, prompt, image, max_token, temperature, top_p, top_k)
@@ -502,8 +540,23 @@ elif talk_2_pdf:
             msg = bedrock_textGen(option, prompt2, max_token, temperature, top_p, top_k, stop_sequences)
         msg += "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {estimate_tokens(prompt2, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.messages.append({"role": "assistant", "content": msg})
-        st.chat_message("ai", avatar='📂').write(msg)
-# RAG injection        
+        st.chat_message("ai", avatar='🗂️').write(msg)
+###
+# File from urls
+###
+elif file_url_exist:
+    if prompt := st.chat_input(placeholder=voice_prompt, on_submit=None, key="user_input"):
+        prompt=voice_prompt if prompt==' ' else prompt
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        st.chat_message("user").write(prompt)
+        
+        msg = extract_urls(file_url_list, prompt, option, embedding_model_id)
+        msg += "\n\n ✒︎***FileURLs Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
+        st.session_state.messages.append({"role": "assistant", "content": msg})
+        st.chat_message("ai", avatar='🗃️').write(msg)
+####
+# RAG injection
+####
 elif rag_update:        
     # Update AOSS
     if upload_docs:
@@ -530,7 +583,7 @@ elif rag_retrieval:
         #msg = bedrock_kb_retrieval_decomposition(prompt, option, max_token, temperature, top_p, top_k, stop_sequences)
         msg += "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.messages.append({"role": "assistant", "content": msg})
-        st.chat_message("ai", avatar='🤞').write(msg)
+        st.chat_message("ai", avatar='📈').write(msg)
 
 elif (record_audio_bytes and len(voice_prompt) > 1):
         if prompt := st.chat_input(placeholder=voice_prompt, on_submit=None, key="user_input"):
@@ -567,7 +620,7 @@ elif blog_writer:
         #msg = "To be added soon. Stayed tuned...."
         msg += f"\n\n ✒︎***Content created by using:*** {option}, ***image generated by using:*** {image_option}, latency: {(time.time() - start_time) * 1000:.2f} ms, tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.messages.append({"role": "assistant", "content": msg})
-        st.chat_message("ai", avatar='🤵').write(msg)
+        st.chat_message("ai", avatar='📝').write(msg)
 else:
     if prompt := st.chat_input():
         st.session_state.messages.append({"role": "user", "content": prompt})

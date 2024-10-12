@@ -642,14 +642,16 @@ def classify_query(query, classes: str, modelId: str):
         return "Error"
 
 def classify_query2(query: str, modelId: str):
-    question_category_prompt = '''You are a seasoned text classifier and your task is to classify precisely the incoming questions to match the action type. Depending on your answer, question will be routed to the right action based on your type choice, so your task is crucial. There are 6 possible question types: 
-    - Generation - Generate a new image out of the input text explicitly call out image genreration or image creation.
+    question_category_prompt = '''You are a seasoned text classifier and your task is to classify precisely the incoming questions to match the action type. Depending on your answer, question will be routed to the right action based on your type choice, so your task is crucial. There are 8 possible question types: 
+    - Image Generation - Generate a new image out of the input text explicitly call out image genreration or image creation.
+    - Video Generation - Generate a new video clip out of the input text explicitly call out video genreration or video creation.
+    - Music Generation - Generate a new music clip out of the input text explicitly call out music genreration or msuic creation.
     - Background - Remove the background from the input image. 
     - Upscale - Enhance or upscale the image for higher resolution.
     - Segmentation - To segment out the objects specified in text and creating masks.
     - Conditioning - Condition the input image and genderate a similiar one guided by the input text.
     - Others - Image understanding and image caption creation.
-Return in the output only one word to represent the top matched type from (GENERATION, BACKGROUND, UPSCALE, SEGMENTATION, CONDITIONING or OTHERS).
+Return in the output only one word to represent the top matched type from (IAMGE GENERATION, VIDEO GENERATION, MUSIC GENERATION, BACKGROUND, UPSCALE, SEGMENTATION, CONDITIONING or OTHERS).
 '''
 
     chat, _ = config_bedrock(embedding_model_id="", model_id=modelId, max_tokens=128, temperature=0.01, top_p=0.99, top_k=20)
