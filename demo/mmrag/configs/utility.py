@@ -11,6 +11,7 @@ import requests
 import urllib.request
 import shutil
 from io import StringIO
+from langdetect import detect
 
 from typing import Optional
 from botocore.config import Config
@@ -49,7 +50,10 @@ account_id = sts_client.get_caller_identity()["Account"]
 s3_suffix = f"{region_name}-{account_id}"
 bucket_name = f'bedrock-kb-{s3_suffix}' # replace it with your bucket name.
 
+# Polly
+polly_client = boto3.client('polly', region_name=region_name) 
 
+# Encryption
 encryption_policy_name = f"bedrock-sample-rag-sp-{suffix}"
 network_policy_name = f"bedrock-sample-rag-np-{suffix}"
 access_policy_name = f'bedrock-sample-rag-ap-{suffix}'
@@ -780,3 +784,46 @@ def bedrock_textGen_converse(model_id, prompt, max_tokens, temperature, top_p, t
     
     # Extract the content
     return  data['content']
+
+
+## TTS
+def get_polly_tts(msg: str):
+    language = detect(msg) 
+    voice_map = {
+      "arb": "Zeina",
+      "zh-cn": "Zhiyu",
+      "cy": "Gwyneth",
+      "da": "Naja",
+      "de": "Marlene",
+      "en-AU": "Nicole",
+      "en-GB": "Amy",
+      "en-GB-WLS": "Geraint",
+      "en-IN": "Aditi",
+      "en": "Salli",
+      "es": "Conchita",
+      "fr": "Mathieu",
+      "hi": "Aditi",
+      "is": "Dóra",
+      "it": "Carla",
+      "ja": "Mizuki",
+      "ko": "Seoyeon",
+      "nb": "Liv",
+      "nl": "Lotte",
+      "pl": "Ewa",
+      "pt": "Camila",
+      "pt": "Inês",
+      "ro": "Carmen",
+      "ru": "Tatyana",
+      "sv": "Astrid",
+      "tr": "Filiz"
+    }
+    voice = voice_map.get(language, 'Joanna')  # Default to Joanna (English) if language not found
+    try:
+        response = polly_client.synthesize_speech(
+                Text=msg,
+                OutputFormat="mp3",
+                VoiceId=voice, 
+            )
+        return response["AudioStream"].read()
+    except:
+        return None

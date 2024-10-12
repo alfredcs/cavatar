@@ -382,15 +382,11 @@ elif audio_transcibe:
             msg = tgi_textGen2('http://infs.cavatar.info:7861/', prompt2[:8000], max_token, temperature, top_p, top_k)
         else:
             msg = bedrock_textGen(option, prompt2, max_token, temperature, top_p, top_k, stop_sequences)
-        msg += "\n\n ✒︎***Audio Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
-        st.session_state.messages.append({"role": "assistant", "content": msg})
-        st.chat_message("ai", avatar='🔊').write(msg)
+        msg_footer = f"{msg}\n\n ✒︎***Audio Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms, Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
+        st.session_state.messages.append({"role": "assistant", "content": msg_footer})
+        st.chat_message("ai", avatar='🔊').write(msg_footer)
         # Ouptut TTS
-        #url = "http://video.cavatar.info:8085/tts_generate?prompt="
-        #response = requests.post(url+msg)
-        #if response.status_code == 200:
-        #    tts_tensor_restored =  np.load(io.BytesIO(response.content))
-        #    st.audio(tts_tensor_restored, format="audio/wav", sample_rate=32000)
+        st.audio(get_polly_tts(msg))
 ###
 # Image
 ###
@@ -638,7 +634,8 @@ else:
         #except:
         #    msg = "Server error. Check the model access permision"
         #    pass
-        msg += "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
-        st.session_state.messages.append({"role": "assistant", "content": msg})
-        st.chat_message("ai", avatar='🤵').write(msg)
-        
+        msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms, Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
+        st.session_state.messages.append({"role": "assistant", "content": msg_footer})
+        st.chat_message("ai", avatar='🤵').write(msg_footer)
+        # Ouptut TTS
+        st.audio(get_polly_tts(msg))
