@@ -534,9 +534,11 @@ elif talk_2_pdf:
             msg = tgi_textGen2('http://infs.cavatar.info:7861/', prompt2[:8000], max_token, temperature, top_p, top_k)
         else:
             msg = bedrock_textGen(option, prompt2, max_token, temperature, top_p, top_k, stop_sequences)
-        msg += "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {estimate_tokens(prompt2, method='max')}, Out: {estimate_tokens(msg, method='max')}"
-        st.session_state.messages.append({"role": "assistant", "content": msg})
-        st.chat_message("ai", avatar='🗂️').write(msg)
+        msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms, Tokens In: {estimate_tokens(prompt2, method='max')}, Out: {estimate_tokens(msg, method='max')}"
+        st.session_state.messages.append({"role": "assistant", "content": msg_footer})
+        st.chat_message("ai", avatar='🗂️').write(msg_footer)
+        # Ouptut TTS
+        st.audio(get_polly_tts(msg))
 ###
 # File from urls
 ###
@@ -600,9 +602,11 @@ elif (record_audio_bytes and len(voice_prompt) > 1):
                 msg=bedrock_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences)
             if isinstance(msg, set):
                 msg = str(sorted(list(msg)))
-            msg += "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
-            st.session_state.messages.append({"role": "assistant", "content": msg})
-            st.chat_message("ai", avatar='🎙️').write(msg)
+            msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms, Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
+            st.session_state.messages.append({"role": "assistant", "content": msg_footer})
+            st.chat_message("ai", avatar='🎙️').write(msg_footer)
+            # Ouptut TTS
+            st.audio(get_polly_tts(msg))
 elif blog_writer:
     if prompt := st.chat_input():
         st.session_state.messages.append({"role": "user", "content": prompt})
