@@ -339,10 +339,11 @@ if rag_search:
             msg = retrieval_faiss_anthropic(prompt, documents, option, embedding_model_id, max_token, temperature, top_p, top_k, doc_num)
         else:
             msg = retrieval_faiss(prompt, documents, option, embedding_model_id, 6000, 600, max_token, temperature, top_p, top_k, doc_num)
-        msg += "\n\n ✧***Sources:***\n\n" + '\n\n\r'.join(urls)
-        msg += "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
-        st.session_state.messages.append({"role": "assistant", "content": msg})
-        st.chat_message("ai", avatar='👁️‍🗨️').write(msg)
+        msg_footer = f"{msg}\n\n ✧***Sources:***\n\n" + '\n\n\r'.join(urls)
+        msg_footer += f"\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms, Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
+        st.session_state.messages.append({"role": "assistant", "content": msg_footer})
+        st.chat_message("ai", avatar='👁️‍🗨️').write(msg_footer)
+        st.audio(get_polly_tts(msg))
 
 elif video_caption:
     if "anthropic.claude-3" not in option:
@@ -382,7 +383,7 @@ elif audio_transcibe:
             msg = tgi_textGen2('http://infs.cavatar.info:7861/', prompt2[:8000], max_token, temperature, top_p, top_k)
         else:
             msg = bedrock_textGen(option, prompt2, max_token, temperature, top_p, top_k, stop_sequences)
-        msg_footer = f"{msg}\n\n ✒︎***Audio Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms, Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
+        msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms, Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.messages.append({"role": "assistant", "content": msg_footer})
         st.chat_message("ai", avatar='🔊').write(msg_footer)
         # Ouptut TTS
@@ -583,7 +584,7 @@ elif rag_retrieval:
         st.session_state.messages.append({"role": "assistant", "content": msg})
         st.chat_message("ai", avatar='📈').write(msg)
 
-elif (record_audio_bytes and len(voice_prompt) > 1):
+elif (record_audio_bytes and len(voice_prompt) > 3):
         if prompt := st.chat_input(placeholder=voice_prompt, on_submit=None, key="user_input"):
             prompt=voice_prompt if prompt==' ' else prompt
             st.session_state.messages.append({"role": "user", "content": prompt})
