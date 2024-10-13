@@ -309,7 +309,7 @@ def get_asr(audio_filename):
     # Make the POST request
     response = requests.post(url, headers=headers, files=files)
     #output = response.text.rstrip() # if using infs.cavatar.info:8081
-    if response.status_code==200 and len(response)>1:
+    if response.status_code==200:
         output =json.dumps(response.json(), indent=3).replace('"', '')
         return output
     else:
