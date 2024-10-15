@@ -30,7 +30,7 @@ from utility import *
 from utils import *
 from video_captioning import *
 from anthropic_tools import *
-#from extract_urls import *
+from extract_urls import *
 #from sam2 import *
 
 
@@ -81,7 +81,8 @@ with st.sidebar:
         options=['Basic', 'Search', 'Multimodal', 'Files', 'Blog'])#, 'Insert', 'Retrieval'])
     if 'Search' in rag_on:
         doc_num = st.slider('Choose max number of documents', 1, 8, 3)
-        embedding_model_id = st.selectbox('Choose Embedding Model',('amazon.titan-embed-g1-text-02', 'amazon.titan-embed-image-v1'))
+        #embedding_model_id = st.selectbox('Choose Embedding Model',('amazon.titan-embed-g1-text-02', 'amazon.titan-embed-image-v1'))
+        embedding_model_id = 'amazon.titan-embed-g1-text-02'
         rag_search = True
     elif 'Multimodal' in rag_on:
         upload_file = st.file_uploader("Upload your image/video here.", accept_multiple_files=False, type=["jpg", "png", "webp", "mp4", "mov", "mp3", "wav"])
@@ -131,10 +132,11 @@ with st.sidebar:
             image_argmentation = True
     elif 'Files' in rag_on:
         upload_docs = st.file_uploader("Upload your pdf/doc/txt files.", accept_multiple_files=True, type=["pdf", "doc", "csv", "json", "txt", "xml"])
-        #file_urls = st.text_input("Or input URLs seperated by ','", key="file_urls", type="default")
+        file_urls = st.text_input("Or input URLs seperated by ','", key="file_urls", type="default")
         fnames = []
         #embedding_model_id = st.selectbox('Choose Embedding Model',('amazon.titan-embed-g1-text-02', 'amazon.titan-embed-image-v1'))
-        if upload_docs is not None:
+        embedding_model_id = 'amazon.titan-embed-g1-text-02'
+        if upload_docs is not None and len(upload_docs) > 0 :
             try:
                 # pdf
                 empty_directory(file_path)
@@ -159,12 +161,15 @@ with st.sidebar:
                     st.write(bytes_data[:1000]+"......".encode())
             except:
                 pass
-        #elif file_urls is not None and len(file_urls) > 4:
-        #    file_url_list = file_urls.split(",")
-        #    #page_image = url_to_image(file_url_list[0])
-        #    #if page_image is not None:
-        #    #    pdf_viewer(input=pdf_bytes, width=1200)
-        #    file_url_exist = True
+        elif file_urls is not None and len(file_urls) > 4:
+            file_url_list = file_urls.split(",")
+            try:
+                response = requests.get(file_url_list[0])
+                st.write(f"Extracted: {len(response.content)} bytes")
+            except:
+                pass
+            #    pdf_viewer(input=pdf_bytes, width=1200)
+            file_url_exist = True
     elif 'Insert' in rag_on:
         upload_docs = st.file_uploader("Upload your doc here", accept_multiple_files=True, type=['pdf', 'doc', 'jpg', 'png'])
         # Amazon Bedrock KB only supports titan-embed-text-v1 not g1-text-02
@@ -550,9 +555,11 @@ elif file_url_exist:
         st.chat_message("user").write(prompt)
         
         msg = extract_urls(file_url_list, prompt, option, embedding_model_id)
-        msg += "\n\n ✒︎***FileURLs Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
-        st.session_state.messages.append({"role": "assistant", "content": msg})
-        st.chat_message("ai", avatar='🗃️').write(msg)
+        msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms, Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
+        st.session_state.messages.append({"role": "assistant", "content": msg_footer})
+        st.chat_message("ai", avatar='🗃️').write(msg_footer)
+        # Ouptut TTS
+        st.audio(get_polly_tts(msg))
 ####
 # RAG injection
 ####
