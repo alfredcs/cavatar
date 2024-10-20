@@ -13,6 +13,7 @@ import base64
 import time
 import hmac
 import numpy as np
+import logging
 from streamlit_pdf_viewer import pdf_viewer
 from concurrent.futures import ThreadPoolExecutor
 
@@ -31,6 +32,7 @@ from utils import *
 from video_captioning import *
 from anthropic_tools import *
 from extract_urls import *
+from finance_analyzer_01 import *
 #from sam2 import *
 
 
@@ -39,6 +41,41 @@ st.title("Personal assistant")
 
 aoss_host = read_key_value(".aoss_config.txt", "AOSS_host_name")
 aoss_index = read_key_value(".aoss_config.txt", "AOSS_index_name")
+
+#Logging handler
+#os.environ["STREAMLIT_TRACING_ENABLED"] = "False"
+class StreamlitLogHandler(logging.Handler):
+    # Initializes a custom log handler with a Streamlit container for displaying logs
+    def __init__(self, container):
+        super().__init__()
+        # Store the Streamlit container for log output
+        self.container = container
+        self.ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])') # Regex to remove ANSI codes
+        self.log_area = self.container.empty() # Prepare an empty conatiner for log output
+
+    def emit(self, record):
+        msg = self.format(record)
+        clean_msg = self.ansi_escape.sub('', msg)  # Strip ANSI codes
+        self.log_area.markdown(clean_msg)
+
+    def clear_logs(self):
+        self.log_area.empty()  # Clear previous logs
+
+# Set up logging to capture all info level logs from the root logger
+def setup_logging():
+    root_logger = logging.getLogger() # Get the root logger
+    log_container = st.container() # Create a container within which we display logs
+    handler = StreamlitLogHandler(log_container)
+    handler.setLevel(logging.INFO)
+    root_logger.addHandler(handler)
+    return handler
+
+# Avoid Overriding of current TracerProvider is not allowed messages with a decorator??
+
+# Display Non_Englis charaters
+def print_text():
+    #translated_text = st.session_state.user_input.encode('utf-8').decode('utf-8')
+    print(st.session_state.user_input)
 
 # Password protection
 def check_password():
@@ -74,11 +111,11 @@ if not check_password():
 with st.sidebar:
     #----- RAG  ------ 
     st.header(':green[Choose a topic] :eyes:')
-    rag_search = rag_update = rag_retrieval = video_caption = image_caption = audio_transcibe = talk_2_pdf = pdf_exist = file_url_exist = blog_writer = image_argmentation = False
+    rag_search = rag_update = rag_retrieval = video_caption = image_caption = audio_transcibe = talk_2_pdf = pdf_exist = file_url_exist = blog_writer = image_argmentation = stock_recommend = False
     rag_on = st.select_slider(
         '',
         value='Basic',
-        options=['Basic', 'Search', 'Multimodal', 'Files', 'Blog'])#, 'Insert', 'Retrieval'])
+        options=['Basic', 'Search', 'Multimodal', 'Files', 'Blog', 'Stock'])#, 'Insert', 'Retrieval', 'Stock'])
     if 'Search' in rag_on:
         doc_num = st.slider('Choose max number of documents', 1, 8, 3)
         #embedding_model_id = st.selectbox('Choose Embedding Model',('amazon.titan-embed-g1-text-02', 'amazon.titan-embed-image-v1'))
@@ -179,6 +216,17 @@ with st.sidebar:
         rag_retrieval = True
     elif 'Blog' in rag_on:
         blog_writer = True
+    elif 'Stock' in rag_on:
+        stock_recommend = True
+        financial_trading_inputs = {
+            'stock_selection': st.text_input("Stock tickers or sector (i.e. nvda, NASQA Technology)", value=""),
+            'initial_capital': st.number_input("Investment amount US$", min_value=0, value=1000, step=100),
+            'risk_tolerance': st.selectbox("Risk tolerance level",('Conservative', 'Moderately conservative','Moderately aggressive', 'Aggressive', 'Very aggressive')),
+            'investment_duration': st.text_input("Investment duration (i.e. 6 monthes or 5 years)", value="1 year"),
+            'return_expectation': st.text_input("Return expectation (i.e. x% monthly or y% annual average)", value="5% annual average"),
+            'trading_strategy_preference': st.text_input("Trading freq preference (i.e. bi-weekly or monthly or yearly)", value="Monthly"),
+            'news_impact_consideration': st.checkbox("Consider indirect impacting factors", value=True)
+        }
                 
     #----- Choose models  ------ 
     st.divider()
@@ -226,6 +274,19 @@ with st.sidebar:
                                               'meta.llama3-1-70b-instruct-v1:0',
                                               'mistral.mistral-large-2407-v1:0',
                                              ))
+    elif 'Stock' in rag_on:
+        option_agent = st.selectbox('Choose Agent Model',('anthropic.claude-3-haiku-20240307-v1:0', 
+                                              'anthropic.claude-3-sonnet-20240229-v1:0',
+                                              'anthropic.claude-3-5-sonnet-20240620-v1:0',
+                                              'meta.llama3-2-90b-instruct-v1:0',
+                                              'mistral.mistral-large-2407-v1:0',
+                                             ))
+        option = st.selectbox('Choose Manager Model',('anthropic.claude-3-5-sonnet-20240620-v1:0',
+                                              'anthropic.claude-3-haiku-20240307-v1:0', 
+                                              'anthropic.claude-3-sonnet-20240229-v1:0',
+                                              'meta.llama3-2-90b-instruct-v1:0',
+                                              'mistral.mistral-large-2407-v1:0',
+                                             ))
     else:
         option = st.selectbox('Choose Model',('anthropic.claude-3-haiku-20240307-v1:0', 
                                               'anthropic.claude-3-sonnet-20240229-v1:0',
@@ -233,14 +294,16 @@ with st.sidebar:
                                               'anthropic.claude-3-5-sonnet-20240620-v1:0',
                                               #'claude-3-5-sonnet-20240620',
                                               'meta.llama3-1-70b-instruct-v1:0',
+                                              'meta.llama3-2-90b-instruct-v1:0',
                                               "meta.llama3-2-11b-instruct-v1:0",
                                               'meta.llama3-1-405b-instruct-v1:0',
                                               'gpt-4o-mini',
                                               'gpt-4o',
                                               'o1-mini',
                                               'mistral.mistral-large-2407-v1:0',
-                                              'FT.Llama3-Med42-8B'))
+                                              'Meta-Llama-3.1-8B'))
         
+    #if 'Basic' in rag_on or 'Files' in rag_on or 'Multimodal' in rag_on:
     st.write("------- Default parameters ----------")
     temperature = st.number_input("Temperature", min_value=0.0, max_value=1.0, value=0.1, step=0.05)
     max_token = st.number_input("Maximum Output Token", min_value=0, value=2048, step=64)
@@ -406,9 +469,9 @@ elif image_caption or image_argmentation:
             try:
                 new_image = upscale_image_bytes(bytes_data)
                 st.image(new_image, output_format="png", use_column_width='auto')
-                msg = "\n\n ✒︎***Content created by using:*** Aura V2 " + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
+                msg_footer = "\n\n ✒︎***Content created by using:*** Aura V2 " + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
             except:
-                msg = "Server timeout. Please check image format and size and retry. " + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
+                msg_footer = "Server timeout. Please check image format and size and retry. " + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
                 pass
         elif  'background' in action.lower(): # and hasattr(locals(), 'bytes_data'):
             try:
@@ -416,9 +479,9 @@ elif image_caption or image_argmentation:
                 base64_str = bedrock_image_processing(option, prompt, action, iheight=1024, iwidth=1024, src_image=bytes_data, color_string=None, image_quality='premium', image_n=1, cfg=7.5, seed=random.randint(100, 500000))
                 new_image = Image.open(io.BytesIO(base64.decodebytes(bytes(base64_str, "utf-8"))))
                 st.image(new_image, output_format="png", use_column_width='auto')
-                msg = "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
+                msg_footer = "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
             except:
-                msg = "Image background removal failed. Make sure the image does not contain sensitive info." + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
+                msg_footer = "Image background removal failed. Make sure the image does not contain sensitive info." + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
                 pass
         #elif 'segmentation' in action.lower():
         #    try:
@@ -436,9 +499,9 @@ elif image_caption or image_argmentation:
                 base64_str = bedrock_image_processing(option, prompt, action, iheight=1024, iwidth=1024, src_image=bytes_data, color_string=None, image_quality='premium', image_n=1, cfg=7.5, seed=random.randint(100, 500000))
                 new_image = Image.open(io.BytesIO(base64.decodebytes(bytes(base64_str, "utf-8"))))
                 st.image(new_image, output_format="png", use_column_width='auto')
-                msg = "\n\n ✒︎***Image conditioned by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
+                msg_footer = "\n\n ✒︎***Image conditioned by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
             except:
-                msg = "Image conditioning failed. Make sure the image does not contain sensitive info." + f" Latency: {(time.time() - start_time) * 1000:.2f} ms" 
+                msg_footer = "Image conditioning failed. Make sure the image does not contain sensitive info." + f" Latency: {(time.time() - start_time) * 1000:.2f} ms" 
                 pass
         elif 'image generation' in action.lower():
             if 'titan' in prompt.lower():
@@ -461,7 +524,7 @@ elif image_caption or image_argmentation:
                 url = "http://video.cavatar.info:8080/generate?prompt="
                 new_image = gen_photo_bytes(prompt, url)
                 st.image(new_image, output_format="png", use_column_width='auto')
-            msg = "\n\n ✒︎***Content created by using:*** "+ option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms"     
+            msg_footer = "\n\n ✒︎***Content created by using:*** "+ option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms"     
         elif 'video generation' in action.lower():
             option = 'T2V-Turbo_v2'
             url = "http://video.cavatar.info:8083/video_generate?prompt="
@@ -469,9 +532,9 @@ elif image_caption or image_argmentation:
             if response.status_code == 200:
                 mp4_bytes = response.content
                 st.video(mp4_bytes)
-                msg = "\n\n ✒︎***Content created by using:*** "+ option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms"  
+                msg_footer = "\n\n ✒︎***Content created by using:*** "+ option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms"  
             else:
-                msg = f"Error generating video from {url}"
+                msg_footer = f"Error generating video from {url}"
         elif 'music generation' in action.lower():
             option2 = 'MusicGen-Large'
             url = "http://video.cavatar.info:8084/music_generate?prompt="
@@ -480,9 +543,9 @@ elif image_caption or image_argmentation:
             if response.status_code == 200:
                 audio_tensor_restored =  np.load(io.BytesIO(response.content))
                 st.audio(audio_tensor_restored, format="audio/wav", sample_rate=32000)
-                msg = "\n\n ✒︎***Content created by using:*** "+ option2 + f", Latency: {(time.time() - start_time) * 1000:.2f} ms"  
+                msg_footer = "\n\n ✒︎***Content created by using:*** "+ option2 + f", Latency: {(time.time() - start_time) * 1000:.2f} ms"  
             else:
-                msg = f"Error generating music from {url} Latency: {(time.time() - start_time) * 1000:.2f} ms" 
+                msg_footer = f"Error generating music from {url} Latency: {(time.time() - start_time) * 1000:.2f} ms" 
         else:
             if "claude-3-5" in option and not 'anthropic.claude' in option: 
                 msg = anthropic_imageCaption(option, prompt, image, max_token, temperature, top_p, top_k)
@@ -505,9 +568,11 @@ elif image_caption or image_argmentation:
                 msg = bedrock_get_img_description(option, prompt, image, max_token, temperature, top_p, top_k, stop_sequences)
             width, height = Image.open(image).size
             tokens = int((height * width)/750)
-            msg += "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {tokens}+{estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
-        st.session_state.messages.append({"role": "assistant", "content": msg})
-        st.chat_message("ai", avatar='🖼️').write(msg)
+            msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms, Tokens In: {tokens}+{estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
+        st.session_state.messages.append({"role": "assistant", "content": msg_footer})
+        st.chat_message("ai", avatar='🖼️').write(msg_footer)
+        if msg is not None and len(msg)> 2:
+            st.audio(get_polly_tts(msg))
 ###
 # Pdf parser        
 ###      
@@ -614,29 +679,57 @@ elif (record_audio_bytes and len(voice_prompt) > 3):
             st.session_state.messages.append({"role": "assistant", "content": msg_footer})
             st.chat_message("ai", avatar='🎙️').write(msg_footer)
             # Ouptut TTS
-            st.audio(get_polly_tts(msg))
+            if msg is not None and len(msg)> 2:
+                st.audio(get_polly_tts(msg))
 elif blog_writer:
     if prompt := st.chat_input():
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.chat_message("user").write(prompt)
         blog_crew = blogCrew(prompt, option)
         msg = blog_crew.run().raw
+        # Gen an image on the topic
         image_option = 'flux.1.dev' #'stability.stable-diffusion-xl-v1:0' # Or 'amazon.titan-image-generator-v1'
         url = "http://video.cavatar.info:8080/generate?prompt="
         new_image = gen_photo_bytes(prompt, url)
         st.image(new_image, output_format="png", use_column_width='auto')
         #msg = "To be added soon. Stayed tuned...."
-        msg += f"\n\n ✒︎***Content created by using:*** {option}, ***image generated by using:*** {image_option}, latency: {(time.time() - start_time) * 1000:.2f} ms, tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
-        st.session_state.messages.append({"role": "assistant", "content": msg})
-        st.chat_message("ai", avatar='📝').write(msg)
+        msg_footer += f"{msg}\n\n ✒︎***Content created by using:*** {option}, ***image generated by using:*** {image_option}, latency: {(time.time() - start_time) * 1000:.2f} ms, tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
+        st.session_state.messages.append({"role": "assistant", "content": msg_footer})
+        st.chat_message("ai", avatar='📝').write(msg_footer)
+        if msg is not None and len(msg)> 2:
+            st.audio(get_polly_tts(msg))
+###
+# Stock recommendation
+###
+elif stock_recommend:
+    if prompt := st.chat_input():
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        st.chat_message("user").write(prompt)
+        financial_trading_inputs['investor_persona']= prompt
+        stock_crew = stockCrew(inputs=financial_trading_inputs, model_id=f"bedrock/{option_agent}", manager_model_id=f"bedrock/{option}")
+        #handler = setup_logging()  # Set up logging with container
+        results = stock_crew.run()
+        #handler.clear_logs()  # Clear logs after conversion
+        msg = results.raw
+        msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option_agent} and {option}, latency: {(time.time() - start_time) * 1000:.2f} ms, tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
+        st.session_state.messages.append({"role": "assistant", "content": msg_footer})
+        st.chat_message("ai", avatar='📝').write(msg_footer)
+        if msg is not None and len(msg)> 2:
+            st.audio(get_polly_tts(msg))
+###
+# The rest
+###
 else:
     if prompt := st.chat_input():
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.chat_message("user").write(prompt)
         #try:
         action = classify_query2(prompt, 'anthropic.claude-3-haiku-20240307-v1:0')
-        if 'llama3-med42-8b' in option.lower():
-            msg = tgi_textGen2('http://infs.cavatar.info:7861/', prompt, max_token, temperature, top_p, top_k)
+        if 'meta-llama-3.1-8b' in option.lower():
+            response = tgi_textGen2('http://video.cavatar.info:8086/', prompt, max_token, temperature, top_p, top_k)
+            response_string =json.dumps(response.json(), indent=3)
+            matches = re.findall(r'<\|eot_id\|>(.*?)<\|eot_id\|>', response_string, re.DOTALL)
+            msg = (''.join([re.sub(r'<\|start_header_id\|>(.*?)<\|end_header_id\|>\\n\\n', '', match).strip() for match in matches])).replace("\\n\\n", "\n\r").replace("\\n", "\n")
         elif 'gpt-4' in option or 'o1' in option:
             msg = openai_textGen(option, prompt, max_token, temperature, top_p)
         elif 'claude-3-5' in option and not 'anthropic.claude' in option:
@@ -650,4 +743,5 @@ else:
         st.session_state.messages.append({"role": "assistant", "content": msg_footer})
         st.chat_message("ai", avatar='🤵').write(msg_footer)
         # Ouptut TTS
-        st.audio(get_polly_tts(msg))
+        if msg is not None and len(msg)> 2:
+            st.audio(get_polly_tts(msg))

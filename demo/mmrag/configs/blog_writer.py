@@ -1,10 +1,9 @@
 import os
-from crewai import Agent, Task, Crew, Process
+from crewai import Agent, Task, Crew, Process, LLM
 from dotenv import load_dotenv
 from langchain.tools import DuckDuckGoSearchRun
-import boto3
-from langchain_aws import BedrockLLM, ChatBedrock, ChatBedrockConverse
 #from langchain.memory import ConversationBufferMemory, ReadOnlySharedMemory
+from langchain_community.tools.tavily_search import TavilySearchResults
 from botocore.config import Config
 from crewai_tools import (
     DirectoryReadTool,
@@ -16,66 +15,10 @@ from crewai_tools import (
 load_dotenv()
 search_tool = DuckDuckGoSearchRun()
 web_rag_tool = WebsiteSearchTool()
+os.environ['TAVILY_API_KEY'] = os.getenv('tavily_api_token')
+tavily_tool = TavilySearchResults(max_results=5)
 
-
-## Setup LLMs
-def get_llm(model_id):
-    session = boto3.Session(profile_name='default')
-    credentials = session.get_credentials()
-    
-    # Get the access key ID and secret access key
-    access_key_id = credentials.access_key
-    secret_access_key = credentials.secret_key
-    aws_region = 'us-west-2'
-    
-    config = Config(
-        retries = dict(
-            max_attempts = 10,
-            total_max_attempts = 25,
-        )
-    )
-    
-    bedrock_client = boto3.client("bedrock-runtime", config=config, 
-                                  aws_access_key_id=access_key_id,
-                                  aws_secret_access_key=secret_access_key,)
-
-    inference_modifier = {
-        "max_tokens": 4096,
-        "temperature": 0.01,
-        "top_k": 50,
-        "top_p": 0.95,
-        "stop_sequences": ["\n\n\nHuman"],
-    }
-
-    if 'claude-3-5' in model_id:
-        inference_modifier = {
-            "max_tokens": 4096,
-            "temperature": 0.01,
-            "top_k": 50,
-            "top_p": 0.95,
-            "stop_sequences": ["\n\n\nHuman"],
-        }
-        llm = ChatBedrock(
-            model_id=model_id,
-            client=bedrock_client,
-            model_kwargs=inference_modifier,
-            region_name=aws_region,
-        ) 
-    elif 'claude-3' in model_id or 'mistral' in model_id or 'llama3-1' in model_id:
-        llm = ChatBedrockConverse(
-            model=model_id,
-            client=bedrock_client,
-            temperature=0.01,
-            max_tokens=2048 if 'llama3-1' in model_id else 4096,
-            region_name=aws_region,
-        )
-    else:
-        llm = BedrockLLM(
-            model_id=model_id,
-            client=bedrock_client,
-            model_kwargs={"temperature": 0.1, "max_gen_len":4096},
-        )  
-    return llm
+#llm_haiku = LLM(model="bedrock/anthropic.claude-3-haiku-20240307-v1:0")
 
 class blogAgents():
     def __init__(self, topic, model_id):
@@ -90,8 +33,8 @@ class blogAgents():
                       You collect information by searhing the web for the latest developements that directly relate to the {topic}. \n
                       audience learn something and make informed decisions. Your work is the basis for the Content Writer to write an article on this {topic}.""",
             allow_delegation=False,
-            tools=[search_tool, web_rag_tool],
-            llm=get_llm(self.model_id),
+            tools=[search_tool, tavily_tool, web_rag_tool],
+            llm=LLM(model=f"bedrock/{self.model_id}"),
             verbose=True
         )
         
@@ -112,7 +55,7 @@ class blogAgents():
                       when your statements are opinions \n
                       as opposed to objective statements.""",
             allow_delegation=False,
-            llm=get_llm(model_id),
+            llm=LLM(model=f"bedrock/{self.model_id}"),
             verbose=True
         )
 
@@ -126,7 +69,7 @@ class blogAgents():
                       "provides balanced viewpoints when providing opinions or assertions, "
                       "and also avoids major controversial topics or opinions when possible.",
             allow_delegation=False,
-            llm=get_llm(model_id),
+            llm=LLM(model=f"bedrock/{self.model_id}"),
             verbose=True
         )
 
@@ -201,12 +144,23 @@ class blogCrew():
         verbose=True,
         memory=True,
         cache=True,
+        manager_llm=LLM(model='bedrock/anthropic.claude-3-5-sonnet-20240620-v1:0'),
         embedder={
-            "provider": "huggingface",
-            "config": {"model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"},
+            "provider": 'aws_bedrock',
+            #"provider": "huggingface",
+            "config":{
+                "model": 'amazon.titan-embed-text-v2:0',
+                "vector_dimension": 1024
+                #"model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+            }
         },
         process=Process.sequential # Sequential process will have tasks executed one after the other and the outcome of the previous one is
     )
 
     result = crew.kickoff()
     return result
+
+if __name__ == "__main__":
+    blog_crew = blogCrew(topic=["Write a log on how to prevent massive disreuctions from predictable nature diasters."],
+                        model_id = "anthropic.claude-3-haiku-20240307-v1:0")
+    result = blog_crew.run()
