@@ -257,7 +257,7 @@ with st.sidebar:
                                                 'anthropic.claude-3-5-sonnet-20240620-v1:0',
                                                 'meta.llama3-1-70b-instruct-v1:0',
                                                 #'claude-3-5-sonnet-20240620',
-                                                "llama-3-1-8b",
+                                                "llama3-1-8b",
                                                 'gpt-4o-mini',
                                                 'gpt-4o'
                                              ))
@@ -294,14 +294,13 @@ with st.sidebar:
                                               'anthropic.claude-3-5-sonnet-20240620-v1:0',
                                               #'claude-3-5-sonnet-20240620',
                                               'meta.llama3-1-70b-instruct-v1:0',
-                                              'meta.llama3-2-90b-instruct-v1:0',
-                                              "meta.llama3-2-11b-instruct-v1:0",
+                                              #'meta.llama3-2-90b-instruct-v1:0',
                                               'meta.llama3-1-405b-instruct-v1:0',
                                               'gpt-4o-mini',
                                               'gpt-4o',
                                               'o1-mini',
                                               'mistral.mistral-large-2407-v1:0',
-                                              'Llama-3-1-8B'))
+                                              'Llama3-1-8B'))
         
     #if 'Basic' in rag_on or 'Files' in rag_on or 'Multimodal' in rag_on:
     st.write("------- Default parameters ----------")
@@ -449,7 +448,7 @@ elif audio_transcibe:
             msg = anthropic_textGen(option, prompt2, max_token, temperature, top_p, top_k, stop_sequences)
         elif 'gpt-4' in option:
             msg = openai_textGen(option, prompt2, max_token, temperature, top_p)
-        elif 'llama-3-1-8b' in option.lower():
+        elif 'llama3-1-8b' in option.lower():
             msg = tgi_textGen2('http://video.cavatar.info:8081/generate', prompt2[:8000], max_token, temperature, top_p, top_k)
         else:
             msg = bedrock_textGen(option, prompt2, max_token, temperature, top_p, top_k, stop_sequences)
@@ -604,7 +603,7 @@ elif talk_2_pdf:
             msg = anthropic_textGen(option, prompt2, max_token, temperature, top_p, top_k, stop_sequences)
         elif 'gpt-4' in option:
             msg = openai_textGen(option, prompt2, max_token, temperature, top_p)
-        elif 'llama-3-1-8b' in option.lower():
+        elif 'llama3-1-8b' in option.lower():
             msg = tgi_textGen2('http://video.cavatar.info:8086/generate', prompt2[:32000], max_token, temperature, top_p, top_k)
         else:
             msg = bedrock_textGen(option, prompt2, max_token, temperature, top_p, top_k, stop_sequences)
@@ -668,8 +667,8 @@ elif (record_audio_bytes and len(voice_prompt) > 3):
 
             action = classify_query(prompt, 'image generation, image upscaling, news, others', 'anthropic.claude-3-haiku-20240307-v1:0')
             
-            if 'llama-3-1-8b' in option.lower():
-                msg=tgi_textGen2('http://video.cavatar.info:8086/generate', prompt, max_token, temperature, top_p, top_k)
+            if 'llama3-1-8b' in option.lower():
+                msg=tgi_client('http://video.cavatar.info:8086/generate?prompt=', prompt, max_token, temperature, top_p, top_k)
             elif 'gpt-4' in option:
                 msg = openai_textGen(option, prompt, max_token, temperature, top_p)
             elif 'claude-3-5' in option and not 'anthropic.claude' in option:
@@ -735,9 +734,9 @@ else:
         st.chat_message("user").write(prompt)
         #try:
         action = classify_query2(prompt, 'anthropic.claude-3-haiku-20240307-v1:0')
-        if 'llama-3-1-8b' in option.lower():
-            msg = tgi_client('http://video.cavatar.info:8086/generate?prompt=', prompt, max_token, temperature, top_p, top_k)
-            #msg = json.load(response)['generated_text']
+        if 'llama3-1-8b' in option.lower():
+            response = tgi_client('http://video.cavatar.info:8086/generate?prompt=', prompt, max_token, temperature, top_p, top_k)
+            msg = json.loads(response)['generated_text'].replace("\\n\\n", "\n\r").replace("\\n", "\n")
         elif 'gpt-4' in option or 'o1' in option:
             msg = openai_textGen(option, prompt, max_token, temperature, top_p)
         elif 'claude-3-5' in option and not 'anthropic.claude' in option:

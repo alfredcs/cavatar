@@ -582,7 +582,7 @@ def tgi_textGen2(option, question, max_token, temperature, top_p, top_k):
     return llm_chain.run(question)
 
 def tgi_client(option, question, max_token, temperature, top_p, top_k):
-    
+ 
     headers = {
         'accept': 'application/json',
         'Content-Type': 'application/json'
@@ -603,26 +603,64 @@ def tgi_client(option, question, max_token, temperature, top_p, top_k):
             "return_full_text": False,
             "seed": None,
             "stop": [
-                "photographer"
+                "<|eot_id|>"
             ],
             "temperature": temperature,
             "top_k": top_k,
             "top_p": top_p,
             "truncate": None,
-            "watermark": True
+            "watermark": False
         }
     }
     
     response = requests.post(option, headers=headers, json=payload)
     
     if response.status_code == 200:
-        response = json.dumps(response.json(), indent=3)
+        response = json.dumps(response.json(), indent=2)
         return (response)
     else:
         print(f"Request failed with status code: {response.status_code}")
         return(response.text)
+    '''
+    try:
+        llm = HuggingFaceTextGenInference(
+            inference_server_url=option,
+            max_new_tokens=max_token,
+            top_k=top_k,
+            top_p=top_p,
+            typical_p=top_p,
+            truncate=None,
+            callbacks=[StreamingStdOutCallbackHandler()],
+            streaming=False,
+            watermark=False,
+            temperature=temperature,
+            repetition_penalty=1.13,
+        )
+    except Excepption as err:
+        print(f"An error occurred in tgi_textGen: {err}")
+        
+    template = """
+        <|begin_of_text|>
+        <|start_header_id|>system<|end_header_id|>
+        {system_prompt}
+        <|eot_id|>
+        <|start_header_id|>user<|end_header_id|>
+        {user_prompt}
+        <|eot_id|>
+        <|start_header_id|>assistant<|end_header_id|>
+        """
 
+    # Added prompt template
+    sys_template_str = "You are a world class assistant who can provide answers with comprehensive and accurate info"
+    human_template_str = "Please think first and answer the user question: {question} ?"
 
+    prompt = PromptTemplate.from_template(template.format(system_prompt = sys_template_str,
+                                                          user_prompt = human_template_str))
+
+    #llm_chain = LLMChain(prompt=prompt, system_prompt=system_promt, llm=llm)
+    session = prompt | llm | StrOutputParser
+    return session.invoke({"question":question})
+    '''
 
 # ------ Classification ----
 def classify_query(query, classes: str, modelId: str):
