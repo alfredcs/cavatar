@@ -74,8 +74,8 @@ def setup_logging():
 
 # Display Non_Englis charaters
 def print_text():
-    #translated_text = st.session_state.user_input.encode('utf-8').decode('utf-8')
-    print(st.session_state.user_input)
+    return st.session_state.user_input.encode('utf-8').decode('utf-8')
+    #print(st.session_state.user_input)
 
 # Password protection
 def check_password():
@@ -257,9 +257,9 @@ with st.sidebar:
                                                 'anthropic.claude-3-5-sonnet-20240620-v1:0',
                                                 'meta.llama3-1-70b-instruct-v1:0',
                                                 #'claude-3-5-sonnet-20240620',
+                                                "llama-3-1-8b",
                                                 'gpt-4o-mini',
-                                                'gpt-4o',
-                                                'FT.Llama3-Med42-8B'
+                                                'gpt-4o'
                                              ))
     elif 'Retrieval' in rag_on:
         option = st.selectbox('Choose Model',('anthropic.claude-3-haiku-20240307-v1:0', 
@@ -301,7 +301,7 @@ with st.sidebar:
                                               'gpt-4o',
                                               'o1-mini',
                                               'mistral.mistral-large-2407-v1:0',
-                                              'Meta-Llama-3.1-8B'))
+                                              'Llama-3-1-8B'))
         
     #if 'Basic' in rag_on or 'Files' in rag_on or 'Multimodal' in rag_on:
     st.write("------- Default parameters ----------")
@@ -411,7 +411,8 @@ if rag_search:
         msg_footer += f"\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms, Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.messages.append({"role": "assistant", "content": msg_footer})
         st.chat_message("ai", avatar='👁️‍🗨️').write(msg_footer)
-        st.audio(get_polly_tts(msg))
+        if msg is not None and len(msg)> 2:
+            st.audio(get_polly_tts(msg))
 
 elif video_caption:
     if "anthropic.claude-3" not in option:
@@ -433,6 +434,7 @@ elif video_caption:
         msg += "\n\n 🔊***Audio transcribe:*** " + audio_transcribe + "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {tokens}+{estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.messages.append({"role": "assistant", "content": msg})
         st.chat_message("ai", avatar='🎥').write(msg)
+
 ###
 # Audio
 ###
@@ -447,15 +449,16 @@ elif audio_transcibe:
             msg = anthropic_textGen(option, prompt2, max_token, temperature, top_p, top_k, stop_sequences)
         elif 'gpt-4' in option:
             msg = openai_textGen(option, prompt2, max_token, temperature, top_p)
-        elif 'med42' in option.lower():
-            msg = tgi_textGen2('http://infs.cavatar.info:7861/', prompt2[:8000], max_token, temperature, top_p, top_k)
+        elif 'llama-3-1-8b' in option.lower():
+            msg = tgi_textGen2('http://video.cavatar.info:8081/generate', prompt2[:8000], max_token, temperature, top_p, top_k)
         else:
             msg = bedrock_textGen(option, prompt2, max_token, temperature, top_p, top_k, stop_sequences)
         msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms, Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.messages.append({"role": "assistant", "content": msg_footer})
         st.chat_message("ai", avatar='🔊').write(msg_footer)
         # Ouptut TTS
-        st.audio(get_polly_tts(msg))
+        if msg is not None and len(msg)> 2:
+            st.audio(get_polly_tts(msg))
 ###
 # Image
 ###
@@ -601,15 +604,16 @@ elif talk_2_pdf:
             msg = anthropic_textGen(option, prompt2, max_token, temperature, top_p, top_k, stop_sequences)
         elif 'gpt-4' in option:
             msg = openai_textGen(option, prompt2, max_token, temperature, top_p)
-        elif 'med42' in option.lower():
-            msg = tgi_textGen2('http://infs.cavatar.info:7861/', prompt2[:8000], max_token, temperature, top_p, top_k)
+        elif 'llama-3-1-8b' in option.lower():
+            msg = tgi_textGen2('http://video.cavatar.info:8086/generate', prompt2[:32000], max_token, temperature, top_p, top_k)
         else:
             msg = bedrock_textGen(option, prompt2, max_token, temperature, top_p, top_k, stop_sequences)
         msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms, Tokens In: {estimate_tokens(prompt2, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.messages.append({"role": "assistant", "content": msg_footer})
         st.chat_message("ai", avatar='🗂️').write(msg_footer)
         # Ouptut TTS
-        st.audio(get_polly_tts(msg))
+        if msg is not None and len(msg)> 2:
+            st.audio(get_polly_tts(msg))
 ###
 # File from urls
 ###
@@ -664,8 +668,8 @@ elif (record_audio_bytes and len(voice_prompt) > 3):
 
             action = classify_query(prompt, 'image generation, image upscaling, news, others', 'anthropic.claude-3-haiku-20240307-v1:0')
             
-            if 'med42' in option.lower():
-                msg=tgi_textGen2('http://infs.cavatar.info:7861/', prompt, max_token, temperature, top_p, top_k)
+            if 'llama-3-1-8b' in option.lower():
+                msg=tgi_textGen2('http://video.cavatar.info:8086/generate', prompt, max_token, temperature, top_p, top_k)
             elif 'gpt-4' in option:
                 msg = openai_textGen(option, prompt, max_token, temperature, top_p)
             elif 'claude-3-5' in option and not 'anthropic.claude' in option:
@@ -685,19 +689,25 @@ elif blog_writer:
     if prompt := st.chat_input():
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.chat_message("user").write(prompt)
-        blog_crew = blogCrew(prompt, option)
-        msg = blog_crew.run().raw
-        # Gen an image on the topic
         image_option = 'flux.1.dev' #'stability.stable-diffusion-xl-v1:0' # Or 'amazon.titan-image-generator-v1'
         url = "http://video.cavatar.info:8080/generate?prompt="
-        new_image = gen_photo_bytes(prompt, url)
+        blog_crew = blogCrew(prompt, option)
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            answer1 = executor.submit(blog_crew.run().raw)
+            answer2 = executor.submit(gen_photo_bytes, prompt, url)
+        #blog_crew = blogCrew(prompt, option)
+        #msg = blog_crew.run().raw
+        msg = answer1.result()
+        # Gen an image on the topic
+        #new_image = gen_photo_bytes(prompt, url)
+        new_image = answer2.result()
         st.image(new_image, output_format="png", use_column_width='auto')
         #msg = "To be added soon. Stayed tuned...."
-        msg_footer += f"{msg}\n\n ✒︎***Content created by using:*** {option}, ***image generated by using:*** {image_option}, latency: {(time.time() - start_time) * 1000:.2f} ms, tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
+        msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, ***image generated by using:*** {image_option}, latency: {(time.time() - start_time) * 1000:.2f} ms, tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.messages.append({"role": "assistant", "content": msg_footer})
         st.chat_message("ai", avatar='📝').write(msg_footer)
         if msg is not None and len(msg)> 2:
-            st.audio(get_polly_tts(msg))
+            st.audio(get_polly_tts(msg[:1024]))
 ###
 # Stock recommendation
 ###
@@ -725,11 +735,9 @@ else:
         st.chat_message("user").write(prompt)
         #try:
         action = classify_query2(prompt, 'anthropic.claude-3-haiku-20240307-v1:0')
-        if 'meta-llama-3.1-8b' in option.lower():
-            response = tgi_textGen2('http://video.cavatar.info:8086/', prompt, max_token, temperature, top_p, top_k)
-            response_string =json.dumps(response.json(), indent=3)
-            matches = re.findall(r'<\|eot_id\|>(.*?)<\|eot_id\|>', response_string, re.DOTALL)
-            msg = (''.join([re.sub(r'<\|start_header_id\|>(.*?)<\|end_header_id\|>\\n\\n', '', match).strip() for match in matches])).replace("\\n\\n", "\n\r").replace("\\n", "\n")
+        if 'llama-3-1-8b' in option.lower():
+            msg = tgi_client('http://video.cavatar.info:8086/generate?prompt=', prompt, max_token, temperature, top_p, top_k)
+            #msg = json.load(response)['generated_text']
         elif 'gpt-4' in option or 'o1' in option:
             msg = openai_textGen(option, prompt, max_token, temperature, top_p)
         elif 'claude-3-5' in option and not 'anthropic.claude' in option:

@@ -581,6 +581,48 @@ def tgi_textGen2(option, question, max_token, temperature, top_p, top_k):
     
     return llm_chain.run(question)
 
+def tgi_client(option, question, max_token, temperature, top_p, top_k):
+    
+    headers = {
+        'accept': 'application/json',
+        'Content-Type': 'application/json'
+    }
+    
+    payload = {
+        "inputs": question,
+        "parameters": {
+            "adapter_id": None,
+            "best_of": 1,
+            "decoder_input_details": False,
+            "details": False,
+            "do_sample": False,
+            "frequency_penalty": 0.1,
+            "grammar": None,
+            "max_new_tokens": max_token,
+            "repetition_penalty": 1.03,
+            "return_full_text": False,
+            "seed": None,
+            "stop": [
+                "photographer"
+            ],
+            "temperature": temperature,
+            "top_k": top_k,
+            "top_p": top_p,
+            "truncate": None,
+            "watermark": True
+        }
+    }
+    
+    response = requests.post(option, headers=headers, json=payload)
+    
+    if response.status_code == 200:
+        response = json.dumps(response.json(), indent=3)
+        return (response)
+    else:
+        print(f"Request failed with status code: {response.status_code}")
+        return(response.text)
+
+
 
 # ------ Classification ----
 def classify_query(query, classes: str, modelId: str):
