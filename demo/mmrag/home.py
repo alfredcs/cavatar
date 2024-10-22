@@ -604,7 +604,8 @@ elif talk_2_pdf:
         elif 'gpt-4' in option:
             msg = openai_textGen(option, prompt2, max_token, temperature, top_p)
         elif 'llama3-1-8b' in option.lower():
-            msg = tgi_textGen2('http://video.cavatar.info:8086/generate', prompt2[:32000], max_token, temperature, top_p, top_k)
+            response = tgi_client('http://video.cavatar.info:8086/generate?prompt=', prompt2, max_token, temperature, top_p, top_k)
+            msg = json.loads(response)['generated_text'].replace("\\n\\n", "\n\r").replace("\\n", "\n")
         else:
             msg = bedrock_textGen(option, prompt2, max_token, temperature, top_p, top_k, stop_sequences)
         msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms, Tokens In: {estimate_tokens(prompt2, method='max')}, Out: {estimate_tokens(msg, method='max')}"
