@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 from audio_recorder_streamlit import audio_recorder
 import sys
 import os
@@ -70,6 +71,11 @@ def setup_logging():
     root_logger.addHandler(handler)
     return handler
 
+## Encapsulate another web page
+def vto_encap_web():
+    iframe_src = "https://agent.cavatar.info:7861"
+    components.iframe(iframe_src)
+
 # Avoid Overriding of current TracerProvider is not allowed messages with a decorator??
 
 # Display Non_Englis charaters
@@ -111,11 +117,11 @@ if not check_password():
 with st.sidebar:
     #----- RAG  ------ 
     st.header(':green[Choose a topic] :eyes:')
-    rag_search = rag_update = rag_retrieval = video_caption = image_caption = audio_transcibe = talk_2_pdf = pdf_exist = file_url_exist = blog_writer = image_argmentation = stock_recommend = False
+    rag_search = rag_update = rag_retrieval = video_caption = image_caption = audio_transcibe = talk_2_pdf = pdf_exist = file_url_exist = blog_writer = image_argmentation = stock_recommend = vto = False
     rag_on = st.select_slider(
         '',
         value='Basic',
-        options=['Basic', 'Search', 'Multimodal', 'Files', 'Blog', 'Stock'])#, 'Insert', 'Retrieval', 'Stock'])
+        options=['Basic', 'Search', 'Multimodal', 'Files', 'Agent'])#, 'Insert', 'Retrieval', 'Stock'])
     if 'Search' in rag_on:
         doc_num = st.slider('Choose max number of documents', 1, 8, 3)
         #embedding_model_id = st.selectbox('Choose Embedding Model',('amazon.titan-embed-g1-text-02', 'amazon.titan-embed-image-v1'))
@@ -214,7 +220,7 @@ with st.sidebar:
         rag_update = True
     elif 'Retrieval' in rag_on:
         rag_retrieval = True
-    elif 'Blog' in rag_on:
+    elif 'Agent' in rag_on:
         blog_writer = True
     elif 'Stock' in rag_on:
         stock_recommend = True
@@ -236,6 +242,7 @@ with st.sidebar:
                                               'anthropic.claude-3-sonnet-20240229-v1:0',
                                               'anthropic.claude-3-opus-20240229-v1:0',
                                               'anthropic.claude-3-5-sonnet-20240620-v1:0',
+                                              'anthropic.claude-3-5-sonnet-20241022-v2:0',
                                               'meta.llama3-1-70b-instruct-v1:0',
                                               'claude-3-5-sonnet-20240620'
                                              ))
@@ -244,6 +251,7 @@ with st.sidebar:
                                               'anthropic.claude-3-sonnet-20240229-v1:0',
                                                'anthropic.claude-3-opus-20240229-v1:0',
                                                'anthropic.claude-3-5-sonnet-20240620-v1:0',
+                                               'anthropic.claude-3-5-sonnet-20241022-v2:0',
                                                "meta.llama3-2-90b-instruct-v1:0",
                                                "llama32_11b_vision_instruct",
                                                #'claude-3-5-sonnet-20240620',
@@ -255,6 +263,7 @@ with st.sidebar:
                                                 'anthropic.claude-3-sonnet-20240229-v1:0',
                                                 'anthropic.claude-3-opus-20240229-v1:0',
                                                 'anthropic.claude-3-5-sonnet-20240620-v1:0',
+                                                'anthropic.claude-3-5-sonnet-20241022-v2:0',
                                                 'meta.llama3-1-70b-instruct-v1:0',
                                                 #'claude-3-5-sonnet-20240620',
                                                 "llama3-1-8b",
@@ -266,11 +275,13 @@ with st.sidebar:
                                               'anthropic.claude-3-sonnet-20240229-v1:0',
                                               'anthropic.claude-3-opus-20240229-v1:0',
                                               'anthropic.claude-3-5-sonnet-20240620-v1:0',
+                                              'anthropic.claude-3-5-sonnet-20241022-v2:0',
                                              ))
     elif 'Blog' in rag_on:
         option = st.selectbox('Choose Model',('anthropic.claude-3-haiku-20240307-v1:0', 
                                               'anthropic.claude-3-sonnet-20240229-v1:0',
                                               'anthropic.claude-3-5-sonnet-20240620-v1:0',
+                                              'anthropic.claude-3-5-sonnet-20241022-v2:0',
                                               'meta.llama3-1-70b-instruct-v1:0',
                                               'mistral.mistral-large-2407-v1:0',
                                              ))
@@ -278,12 +289,14 @@ with st.sidebar:
         option_agent = st.selectbox('Choose Agent Model',('anthropic.claude-3-haiku-20240307-v1:0', 
                                               'anthropic.claude-3-sonnet-20240229-v1:0',
                                               'anthropic.claude-3-5-sonnet-20240620-v1:0',
+                                              'anthropic.claude-3-5-sonnet-20241022-v2:0',
                                               'meta.llama3-2-90b-instruct-v1:0',
                                               'mistral.mistral-large-2407-v1:0',
                                              ))
         option = st.selectbox('Choose Manager Model',('anthropic.claude-3-5-sonnet-20240620-v1:0',
                                               'anthropic.claude-3-haiku-20240307-v1:0', 
                                               'anthropic.claude-3-sonnet-20240229-v1:0',
+                                              'anthropic.claude-3-5-sonnet-20241022-v2:0',
                                               'meta.llama3-2-90b-instruct-v1:0',
                                               'mistral.mistral-large-2407-v1:0',
                                              ))
@@ -292,6 +305,7 @@ with st.sidebar:
                                               'anthropic.claude-3-sonnet-20240229-v1:0',
                                               'anthropic.claude-3-opus-20240229-v1:0',
                                               'anthropic.claude-3-5-sonnet-20240620-v1:0',
+                                              'anthropic.claude-3-5-sonnet-20241022-v2:0',
                                               #'claude-3-5-sonnet-20240620',
                                               'meta.llama3-1-70b-instruct-v1:0',
                                               #'meta.llama3-2-90b-instruct-v1:0',
@@ -548,6 +562,9 @@ elif image_caption or image_argmentation:
                 msg_footer = "\n\n ✒︎***Content created by using:*** "+ option2 + f", Latency: {(time.time() - start_time) * 1000:.2f} ms"  
             else:
                 msg_footer = f"Error generating music from {url} Latency: {(time.time() - start_time) * 1000:.2f} ms" 
+        elif 'virtual try-on' in action.lower():
+            msg = "Click to launch virtual try-on [demo](http://agent.cavatar.info:7861)"
+            msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** [IDM-VTON](https://github.com/yisol/IDM-VTON)"
         else:
             if "claude-3-5" in option and not 'anthropic.claude' in option: 
                 msg = anthropic_imageCaption(option, prompt, image, max_token, temperature, top_p, top_k)

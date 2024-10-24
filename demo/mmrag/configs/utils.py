@@ -730,6 +730,7 @@ def classify_query2(query: str, modelId: str):
     - Upscale - Enhance or upscale the image for higher resolution.
     - Segmentation - To segment out the objects specified in text and creating masks.
     - Conditioning - Condition the input image and genderate a similiar one guided by the input text.
+    - Virtual Try-on - Virtual try-on demo to showcase on-line fashion styling by selecting a model and a garment.
     - Others - Image understanding and image caption creation.
 Return in the output only one word to represent the top matched type from (IAMGE GENERATION, VIDEO GENERATION, MUSIC GENERATION, BACKGROUND, UPSCALE, SEGMENTATION, CONDITIONING or OTHERS).
 '''
