@@ -160,9 +160,9 @@ with st.sidebar:
                 st.audio(response.content, format="audio/wav")
                 audio_transcibe = True
             elif response.status_code == 200 and 'image' in response.headers.get('Content-Type'):
-                image_data = response.content
+                bytes_data = response.content #was image_data
                 # Convert the image data to a BytesIO object
-                image = io.BytesIO(image_data)
+                image = io.BytesIO(bytes_data)
                 st.image(image)
                 image_caption = True
             elif response.status_code == 200 and 'video' in response.headers.get('Content-Type'):
@@ -317,13 +317,14 @@ with st.sidebar:
                                               'Llama3-1-8B'))
         
     #if 'Basic' in rag_on or 'Files' in rag_on or 'Multimodal' in rag_on:
-    st.write("------- Default parameters ----------")
-    temperature = st.number_input("Temperature", min_value=0.0, max_value=1.0, value=0.1, step=0.05)
-    max_token = st.number_input("Maximum Output Token", min_value=0, value=2048, step=64)
-    top_p = st.number_input("Top_p: The cumulative probability cutoff for token selection", min_value=0.1, value=0.85)
-    top_k = st.number_input("Top_k: Sample from the k most likely next tokens at each step", min_value=1, value=20)
-    #candidate_count = st.number_input("Number of generated responses to return", min_value=1, value=1)
-    stop_sequences = st.text_input("The set of character sequences (up to 5) that will stop output generation", value="\n\n\nHuman")
+    if 'Multimodal' not in rag_on or 'Blog' in rag_on or 'Stock' not in rag_on:
+        st.write("------- Default parameters ----------")
+        temperature = st.number_input("Temperature", min_value=0.0, max_value=1.0, value=0.1, step=0.05)
+        max_token = st.number_input("Maximum Output Token", min_value=0, value=2048, step=64)
+        top_p = st.number_input("Top_p: The cumulative probability cutoff for token selection", min_value=0.1, value=0.85)
+        top_k = st.number_input("Top_k: Sample from the k most likely next tokens at each step", min_value=1, value=20)
+        #candidate_count = st.number_input("Number of generated responses to return", min_value=1, value=1)
+        stop_sequences = st.text_input("The set of character sequences (up to 5) that will stop output generation", value="\n\n\nHuman")
 
     # --- Audio query -----#
     st.divider()
@@ -563,7 +564,7 @@ elif image_caption or image_argmentation:
             else:
                 msg_footer = f"Error generating music from {url} Latency: {(time.time() - start_time) * 1000:.2f} ms" 
         elif 'virtual try-on' in action.lower():
-            msg = "Click to launch virtual try-on [demo](http://agent.cavatar.info:7861)"
+            msg = "Click to launch virtual try-on [demo](http://video.cavatar.info:7861)"
             msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** [IDM-VTON](https://github.com/yisol/IDM-VTON)"
         else:
             if "claude-3-5" in option and not 'anthropic.claude' in option: 
