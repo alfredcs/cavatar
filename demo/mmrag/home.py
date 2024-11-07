@@ -23,6 +23,7 @@ file_path = "/home/alfred/demos/mmrag/data/"
 video_file_name = "uploaded_video.mp4"
 temp_audio_file = "audio_inut.wav"
 voice_prompt = ''
+tokens = 0
 
 for module_path in module_paths:
     sys.path.append(os.path.abspath(module_path))
@@ -128,6 +129,7 @@ with st.sidebar:
         embedding_model_id = 'amazon.titan-embed-g1-text-02'
         rag_search = True
     elif 'Multimodal' in rag_on:
+        image = None
         upload_file = st.file_uploader("Upload your image/video here.", accept_multiple_files=False, type=["jpg", "png", "webp", "mp4", "mov", "mp3", "wav"])
         image_url = st.text_input("Or Input Image/Video/Audio URL", key="image_url", type="default")
         if upload_file is not None:
@@ -238,7 +240,8 @@ with st.sidebar:
     st.divider()
     st.title(':orange[Model Config] :pencil2:') 
     if 'Search' in rag_on:
-        option = st.selectbox('Choose Model',('anthropic.claude-3-haiku-20240307-v1:0', 
+        option = st.selectbox('Choose Model',('anthropic.claude-3-5-haiku-20241022-v1:0',
+                                              'anthropic.claude-3-haiku-20240307-v1:0', 
                                               'anthropic.claude-3-sonnet-20240229-v1:0',
                                               'anthropic.claude-3-opus-20240229-v1:0',
                                               'anthropic.claude-3-5-sonnet-20240620-v1:0',
@@ -247,11 +250,11 @@ with st.sidebar:
                                               'claude-3-5-sonnet-20240620'
                                              ))
     elif 'Multimodal' in rag_on:
-         option = st.selectbox('Choose Model',('anthropic.claude-3-haiku-20240307-v1:0', 
+         option = st.selectbox('Choose Model',('anthropic.claude-3-5-sonnet-20241022-v2:0',
+                                               'anthropic.claude-3-haiku-20240307-v1:0', 
                                               'anthropic.claude-3-sonnet-20240229-v1:0',
                                                'anthropic.claude-3-opus-20240229-v1:0',
                                                'anthropic.claude-3-5-sonnet-20240620-v1:0',
-                                               'anthropic.claude-3-5-sonnet-20241022-v2:0',
                                                "meta.llama3-2-90b-instruct-v1:0",
                                                "llama32_11b_vision_instruct",
                                                #'claude-3-5-sonnet-20240620',
@@ -259,7 +262,8 @@ with st.sidebar:
                                                'gpt-4o',
                                              ))
     elif 'Files' in rag_on:
-         option = st.selectbox('Choose Model',('anthropic.claude-3-haiku-20240307-v1:0', 
+         option = st.selectbox('Choose Model',('anthropic.claude-3-5-haiku-20241022-v1:0',
+                                                'anthropic.claude-3-haiku-20240307-v1:0', 
                                                 'anthropic.claude-3-sonnet-20240229-v1:0',
                                                 'anthropic.claude-3-opus-20240229-v1:0',
                                                 'anthropic.claude-3-5-sonnet-20240620-v1:0',
@@ -271,14 +275,16 @@ with st.sidebar:
                                                 'gpt-4o'
                                              ))
     elif 'Retrieval' in rag_on:
-        option = st.selectbox('Choose Model',('anthropic.claude-3-haiku-20240307-v1:0', 
+        option = st.selectbox('Choose Model',('anthropic.claude-3-5-haiku-20241022-v1:0',
+                                              'anthropic.claude-3-haiku-20240307-v1:0', 
                                               'anthropic.claude-3-sonnet-20240229-v1:0',
                                               'anthropic.claude-3-opus-20240229-v1:0',
                                               'anthropic.claude-3-5-sonnet-20240620-v1:0',
                                               'anthropic.claude-3-5-sonnet-20241022-v2:0',
                                              ))
     elif 'Blog' in rag_on:
-        option = st.selectbox('Choose Model',('anthropic.claude-3-haiku-20240307-v1:0', 
+        option = st.selectbox('Choose Model',('anthropic.claude-3-5-haiku-20241022-v1:0',
+                                              'anthropic.claude-3-haiku-20240307-v1:0', 
                                               'anthropic.claude-3-sonnet-20240229-v1:0',
                                               'anthropic.claude-3-5-sonnet-20240620-v1:0',
                                               'anthropic.claude-3-5-sonnet-20241022-v2:0',
@@ -286,14 +292,16 @@ with st.sidebar:
                                               'mistral.mistral-large-2407-v1:0',
                                              ))
     elif 'Stock' in rag_on:
-        option_agent = st.selectbox('Choose Agent Model',('anthropic.claude-3-haiku-20240307-v1:0', 
+        option_agent = st.selectbox('Choose Agent Model',('anthropic.claude-3-5-haiku-20241022-v1:0',
+                                              'anthropic.claude-3-haiku-20240307-v1:0', 
                                               'anthropic.claude-3-sonnet-20240229-v1:0',
                                               'anthropic.claude-3-5-sonnet-20240620-v1:0',
                                               'anthropic.claude-3-5-sonnet-20241022-v2:0',
                                               'meta.llama3-2-90b-instruct-v1:0',
                                               'mistral.mistral-large-2407-v1:0',
                                              ))
-        option = st.selectbox('Choose Manager Model',('anthropic.claude-3-5-sonnet-20240620-v1:0',
+        option = st.selectbox('Choose Manager Model',('anthropic.claude-3-5-haiku-20241022-v1:0',
+                                                      'anthropic.claude-3-5-sonnet-20240620-v1:0',
                                               'anthropic.claude-3-haiku-20240307-v1:0', 
                                               'anthropic.claude-3-sonnet-20240229-v1:0',
                                               'anthropic.claude-3-5-sonnet-20241022-v2:0',
@@ -301,7 +309,8 @@ with st.sidebar:
                                               'mistral.mistral-large-2407-v1:0',
                                              ))
     else:
-        option = st.selectbox('Choose Model',('anthropic.claude-3-haiku-20240307-v1:0', 
+        option = st.selectbox('Choose Model',('anthropic.claude-3-5-haiku-20241022-v1:0',
+                                              'anthropic.claude-3-haiku-20240307-v1:0', 
                                               'anthropic.claude-3-sonnet-20240229-v1:0',
                                               'anthropic.claude-3-opus-20240229-v1:0',
                                               'anthropic.claude-3-5-sonnet-20240620-v1:0',
@@ -581,10 +590,14 @@ elif image_caption or image_argmentation:
                     msg = (''.join([re.sub(r'<\|start_header_id\|>(.*?)<\|end_header_id\|>\\n\\n', '', match).strip() for match in matches])).replace("\\n\\n", "\n\r").replace("\\n", "\n")
                 else:
                     msg = "Call Llama 3.2 11B fast_api failed."
-            else:
+            elif image is not None:
                 msg = bedrock_get_img_description(option, prompt, image, max_token, temperature, top_p, top_k, stop_sequences)
-            width, height = Image.open(image).size
-            tokens = int((height * width)/750)
+                width, height = Image.open(image).size
+                tokens = int((height * width)/750)
+            else:
+                msg=str(bedrock_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences))
+            #width, height = Image.open(image).size
+            #tokens = int((height * width)/750)
             msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms, Tokens In: {tokens}+{estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.messages.append({"role": "assistant", "content": msg_footer})
         st.chat_message("ai", avatar='🖼️').write(msg_footer)
@@ -687,8 +700,8 @@ elif (record_audio_bytes and len(voice_prompt) > 3):
                 msg=tgi_client('http://video.cavatar.info:8086/generate?prompt=', prompt, max_token, temperature, top_p, top_k)
             elif 'gpt-4' in option:
                 msg = openai_textGen(option, prompt, max_token, temperature, top_p)
-            elif 'claude-3-5' in option and not 'anthropic.claude' in option:
-                msg = anthropic_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences)
+            #elif 'claude-3-5' in option and not 'anthropic.claude' in option:
+            #    msg = anthropic_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences)
             #elif 'generate imagetextGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences)' in classify_query(prompt, 'generate image, news, others', 'anthropic.claude-3-haiku-20240307-v1:0'):
             else:
                 msg=bedrock_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences)
@@ -704,21 +717,9 @@ elif blog_writer:
     if prompt := st.chat_input():
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.chat_message("user").write(prompt)
-        image_option = 'flux.1.dev' #'stability.stable-diffusion-xl-v1:0' # Or 'amazon.titan-image-generator-v1'
-        url = "http://video.cavatar.info:8080/generate?prompt="
         blog_crew = blogCrew(prompt, option)
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            answer1 = executor.submit(blog_crew.run().raw)
-            answer2 = executor.submit(gen_photo_bytes, prompt, url)
-        #blog_crew = blogCrew(prompt, option)
-        #msg = blog_crew.run().raw
-        msg = answer1.result()
-        # Gen an image on the topic
-        #new_image = gen_photo_bytes(prompt, url)
-        new_image = answer2.result()
-        st.image(new_image, output_format="png", use_column_width='auto')
-        #msg = "To be added soon. Stayed tuned...."
-        msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, ***image generated by using:*** {image_option}, latency: {(time.time() - start_time) * 1000:.2f} ms, tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
+        msg = blog_crew.run().raw
+        msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, latency: {(time.time() - start_time) * 1000:.2f} ms, tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.messages.append({"role": "assistant", "content": msg_footer})
         st.chat_message("ai", avatar='📝').write(msg_footer)
         if msg is not None and len(msg)> 2:
