@@ -55,9 +55,9 @@ tools = [
 ]
 
 # CrewAI LLM config uses LiteLLM
-llm_haiku = LLM(model="bedrock/anthropic.claude-3-haiku-20240307-v1:0")
+llm_haiku = LLM(model="bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0")
 llm_sonnet35 = LLM(model="bedrock/anthropic.claude-3-5-sonnet-20240620-v1:0")
-llm_llama32 = LLM(model="bedrock/meta.llama3-2-90b-instruct-v1:0")
+llm_llama32 = LLM(model="bedrock/meta.llama3-1-70b-instruct-v1:0")
 llm_mistral = LLM(model="bedrock/mistral.mistral-large-2407-v1:0")
 
 class finAgents():
@@ -281,7 +281,7 @@ class finTasks():
 
 class stockCrew():
   def __init__(self, inputs: dict,
-            model_id: str='bedrock/anthropic.claude-3-haiku-20240307-v1:0', manager_model_id: str='bedrock/anthropic.claude-3-5-sonnet-20240620-v1:0',
+            model_id: str='bedrock/anthropic.claude-3-haiku-20240307-v1:0', manager_model_id: str=llm_sonnet35,
             embedding_provider: str='aws_bedrock', embedding_model_id: str='amazon.titan-embed-text-v2:0', embedding_dimensions: int=1024,):
     self.inputs = inputs
     self.model_id = model_id

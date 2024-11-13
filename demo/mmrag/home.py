@@ -35,6 +35,7 @@ from video_captioning import *
 from anthropic_tools import *
 from extract_urls import *
 from finance_analyzer_01 import *
+from oivg import *
 #from sam2 import *
 
 
@@ -542,6 +543,13 @@ elif image_caption or image_argmentation:
                 base64_str = bedrock_imageGen(option, prompt, iheight=1024, iwidth=1024, src_image=None, image_quality='premium', image_n=1, cfg=random.uniform(3.2, 9.0), seed=random.randint(0, 500000))
                 new_image = Image.open(io.BytesIO(base64.decodebytes(bytes(base64_str, "utf-8"))))
                 st.image(new_image, output_format="png", use_column_width='auto')
+            elif 'olympus' in prompt.lower():
+                option = 'amazon.olympus-image-generator-v1:0'
+                neg_prompt="Bad anatomy, Bad proportions, Deformed, Disconnected limbs, Disfigured, Worst quality, Normal quality, Low quality, Low res, Blurry, Jpeg artifacts, Grainy."
+                image_n = top_k if top_k < 5 else 1
+                new_images = t2i_olympus(prompt, neg_prompt=neg_prompt, num_image=image_n)
+                for new_image in new_images:
+                    st.image(new_image, output_format="png", use_column_width='auto')
             else:
                 option = 'flux.1.dev' #'stability.stable-diffusion-xl-v1:0' # Or 'amazon.titan-image-generator-v1'
                 url = "http://video.cavatar.info:8080/generate?prompt="
@@ -549,15 +557,23 @@ elif image_caption or image_argmentation:
                 st.image(new_image, output_format="png", use_column_width='auto')
             msg_footer = "\n\n ✒︎***Content created by using:*** "+ option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms"     
         elif 'video generation' in action.lower():
-            option = 'T2V-Turbo_v2'
-            url = "http://video.cavatar.info:8083/video_generate?prompt="
-            response = requests.post(url+prompt)
-            if response.status_code == 200:
-                mp4_bytes = response.content
-                st.video(mp4_bytes)
-                msg_footer = "\n\n ✒︎***Content created by using:*** "+ option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms"  
+            if 'olympus' in prompt.lower():
+                option = 'amazon.olympus-video-generator-v1:0'
+                file_name = t2v_ovg(video_prompt=prompt, role_arn="arn:aws:iam::905418197933:role/ovg_developer")
+                with open(file_name, 'rb') as file:
+                    mp4_bytes = file.read()
+                    st.video(mp4_bytes)
+                    msg_footer = "\n\n ✒︎***Content created by using:*** "+ option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms"
             else:
-                msg_footer = f"Error generating video from {url}"
+                option = 'T2V-Turbo_v2'
+                url = "http://video.cavatar.info:8083/video_generate?prompt="
+                response = requests.post(url+prompt)
+                if response.status_code == 200:
+                    mp4_bytes = response.content
+                    st.video(mp4_bytes)
+                    msg_footer = "\n\n ✒︎***Content created by using:*** "+ option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms"  
+                else:
+                    msg_footer = f"Error generating video from {url}"
         elif 'music generation' in action.lower():
             option2 = 'MusicGen-Large'
             url = "http://video.cavatar.info:8084/music_generate?prompt="

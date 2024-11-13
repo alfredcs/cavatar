@@ -1215,10 +1215,10 @@ def gen_photo_bytes(prompt: str, url:str):
         return None
 
 # --- Image upscaleing  --- 
-def upscale_image_bytes(image_bytes):
-    files = {"file": image_bytes}    
+def upscale_image_bytes(image_bytes, prompt):
+    files = {"file": image_bytes, "prompt": prompt}    
     #url = "http://infs.cavatar.info:8085//upscale/?image_bytes="
-    url = "http://infs.cavatar.info:8085/upscale"
+    url = "http://agent.cavatar.info:8085/upscale"
     response = requests.post(url, files=files)
     if response.status_code == 200:
         image_bytes_out = response.content
