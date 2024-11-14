@@ -112,14 +112,16 @@ def t2i_olympus(prompt:str, neg_prompt:str, cfgScale:float=7.0, num_image: int=1
     )
     # Convert the JSON-formatted response to a dictionary.
     response_body = json.loads(response["body"].read())
-    images = response_body["images"]
     return_images = []
-    for i in range(len(images)):
-        image_data = images[i]
-        image_bytes = base64.b64decode(image_data)
-        #image = Image.open(io.BytesIO(image_bytes))
-        return_images.append(Image.open(io.BytesIO(image_bytes)))
-
+    try:
+        images = response_body["images"]
+        for i in range(len(images)):
+            image_data = images[i]
+            image_bytes = base64.b64decode(image_data)
+            #image = Image.open(io.BytesIO(image_bytes))
+            return_images.append(Image.open(io.BytesIO(image_bytes)))
+    except:
+        pass
     return return_images
 
 def download_video_for_invocation_arn(invocation_arn: str, role_arn:str, bucket_name: str="ovg-videos", destination_folder:str="./output"):

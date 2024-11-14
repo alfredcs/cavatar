@@ -36,6 +36,7 @@ from anthropic_tools import *
 from extract_urls import *
 from finance_analyzer_01 import *
 from oivg import *
+from search_2_google import *
 #from sam2 import *
 
 
@@ -387,45 +388,13 @@ if rag_search:
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.chat_message("user").write(prompt)
         
-        #Do retrieval
-        #documents = search_and_convert(prompt, max_results=doc_num, filepath='pdfs')
-        #documents = search_arxiv(prompt, max_results=doc_num, filepath='pdfs')
-        #msg = retrieval_chroma(prompt, option, embedding_model_id, 6000, 600, max_token, temperature, top_p, top_k, doc_num
-        #if 'simple general' in classify_query(prompt, 'simple general, others', 'anthropic.claude-3-haiku-20240307-v1:0'):
-        
-        #    msg, urls = serp_search(prompt, option, embedding_model_id, max_token, temperature, top_p, top_k, doc_num)
-
-        ##
-        # Use both search engines concurrently
-        ##
-        #def combine_documents(doc1: Document, doc2: Document) -> Document:
-        #    combined_page_content = doc1.page_content + "\n\n" + doc2.page_content
-        #    combined_metadata = {**doc1.metadata, **doc2.metadata}
-        #    return Document(page_content=combined_page_content, metadata=combined_metadata)
-            
-        #with concurrent.futures.ThreadPoolExecutor() as executor:
-        #    answer1 = executor.submit(google_search, prompt, num_results=doc_num)
-        #    answer2 = executor.submit(tavily_search, prompt, num_results=doc_num)
-        #    concurrent.futures.wait([answer1, answer2])
-        #    docs1, urls =  answer1.result()
-        #    docs2 = answer2.result()
-        
-        #combined_content = "\n\n".join([docs1.page_content, docs2['documents'].page_content])
-        #documents = Document(
-        #    page_content=docs1.page_content + "\n" + docs2['documents'].page_content,
-        #    metadata={**doc1.metadata['source'], **docs['urls'][0:doc_num]}
-        #)
-        #documents = Document(page_content=combined_content)
-        #urls += docs2['urls'][0:doc_num]
-
         # Tavily only
-        docs =  tavily_search(prompt, num_results=doc_num)
-        documents = docs['documents']
-        urls = docs['urls'][0:doc_num]
-        
-        # Is Tavily search fails then try Google search
-        if documents is None or len(urls) == 0:
-            documents, urls = google_search(prompt, num_results=doc_num)
+        if doc_num == 3:
+            docs =  tavily_search(prompt, num_results=doc_num)
+            documents = docs['documents']
+            urls = docs['urls'][0:doc_num]
+        else:   
+            documents, urls = search_2_google(prompt, int(doc_num/2)+1)
         
         if 'claude-3-5' in option and not 'anthropic.claude' in option:
             msg = retrieval_faiss_anthropic(prompt, documents, option, embedding_model_id, max_token, temperature, top_p, top_k, doc_num)
@@ -531,6 +500,7 @@ elif image_caption or image_argmentation:
                 msg_footer = "Image conditioning failed. Make sure the image does not contain sensitive info." + f" Latency: {(time.time() - start_time) * 1000:.2f} ms" 
                 pass
         elif 'image generation' in action.lower():
+            msg = ''
             if 'titan' in prompt.lower():
                 option = 'amazon.titan-image-generator-v2:0'
                 base64_str = bedrock_imageGen(option, prompt, iheight=1024, iwidth=1024, src_image=None, image_quality='premium', image_n=1, cfg=random.uniform(3.2, 9.0), seed=random.randint(0, 500000))
@@ -548,6 +518,8 @@ elif image_caption or image_argmentation:
                 neg_prompt="Bad anatomy, Bad proportions, Deformed, Disconnected limbs, Disfigured, Worst quality, Normal quality, Low quality, Low res, Blurry, Jpeg artifacts, Grainy."
                 image_n = top_k if top_k < 5 else 1
                 new_images = t2i_olympus(prompt, neg_prompt=neg_prompt, num_image=image_n)
+                if len(new_images) < 1:
+                    msg = "Make sure your prompt meets guardrail requirements."
                 for new_image in new_images:
                     st.image(new_image, output_format="png", use_column_width='auto')
             else:
@@ -555,7 +527,7 @@ elif image_caption or image_argmentation:
                 url = "http://video.cavatar.info:8080/generate?prompt="
                 new_image = gen_photo_bytes(prompt, url)
                 st.image(new_image, output_format="png", use_column_width='auto')
-            msg_footer = "\n\n ✒︎***Content created by using:*** "+ option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms"     
+            msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms"     
         elif 'video generation' in action.lower():
             if 'olympus' in prompt.lower():
                 option = 'amazon.olympus-video-generator-v1:0'
