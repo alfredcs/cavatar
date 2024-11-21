@@ -254,12 +254,13 @@ with st.sidebar:
     elif 'Multimodal' in rag_on:
          option = st.selectbox('Choose Model',('anthropic.claude-3-5-sonnet-20241022-v2:0',
                                                'anthropic.claude-3-haiku-20240307-v1:0', 
-                                              'anthropic.claude-3-sonnet-20240229-v1:0',
+                                               'anthropic.claude-3-sonnet-20240229-v1:0',
                                                'anthropic.claude-3-opus-20240229-v1:0',
                                                'anthropic.claude-3-5-sonnet-20240620-v1:0',
                                                "meta.llama3-2-90b-instruct-v1:0",
                                                "llama32_11b_vision_instruct",
                                                #'claude-3-5-sonnet-20240620',
+                                               "llava_o1",
                                                'gpt-4o-mini',
                                                'gpt-4o',
                                              ))
@@ -317,6 +318,7 @@ with st.sidebar:
                                               'anthropic.claude-3-opus-20240229-v1:0',
                                               'anthropic.claude-3-5-sonnet-20240620-v1:0',
                                               'anthropic.claude-3-5-sonnet-20241022-v2:0',
+                                              'amazon.olympus-1-lite-v1:0',
                                               #'claude-3-5-sonnet-20240620',
                                               'meta.llama3-1-70b-instruct-v1:0',
                                               #'meta.llama3-2-90b-instruct-v1:0',
@@ -388,19 +390,20 @@ if rag_search:
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.chat_message("user").write(prompt)
         
-        # Tavily only
+        ## Tavily only
         if doc_num == 3:
             docs =  tavily_search(prompt, num_results=doc_num)
             documents = docs['documents']
             urls = docs['urls'][0:doc_num]
         else:   
             documents, urls = search_2_google(prompt, int(doc_num/2)+1)
+        #documents, urls = all_search(prompt=prompt, num_results=int(doc_num/2)+1)
         
         if 'claude-3-5' in option and not 'anthropic.claude' in option:
             msg = retrieval_faiss_anthropic(prompt, documents, option, embedding_model_id, max_token, temperature, top_p, top_k, doc_num)
         else:
             msg = retrieval_faiss(prompt, documents, option, embedding_model_id, 6000, 600, max_token, temperature, top_p, top_k, doc_num)
-        msg_footer = f"{msg}\n\n ✧***Sources:***\n\n" + '\n\n\r'.join(urls)
+        msg_footer = f"{msg}\n\n ✧***Sources:***\n\n" + '\n\n\r'.join(urls[0:doc_num])
         msg_footer += f"\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms, Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.messages.append({"role": "assistant", "content": msg_footer})
         st.chat_message("ai", avatar='👁️‍🗨️').write(msg_footer)
@@ -565,8 +568,8 @@ elif image_caption or image_argmentation:
                 msg = anthropic_imageCaption(option, prompt, image, max_token, temperature, top_p, top_k)
             elif "gpt-4" in option:
                 msg = openai_image_getDescription(option, prompt, image, max_token, temperature, top_p)
-            elif "llama32_11b" in option:
-                url = "http://video.cavatar.info:8081/generate"
+            elif "llama32_11b" in option or "llava_o1" in option:
+                url = "http://video.cavatar.info:8081/generate" if "llama32_11b" in option else "http://agent.cavatar.info:8081/reasoning"
                 #files = {'file': ('image.jpg', bytes_data, 'image/jpeg')}
                 files = {'file': ('image.png', image, 'image/png')}
                 data = {'prompt': prompt}
@@ -742,16 +745,23 @@ else:
         if 'llama3-1-8b' in option.lower():
             response = tgi_client('http://video.cavatar.info:8086/generate?prompt=', prompt, max_token, temperature, top_p, top_k)
             msg = json.loads(response)['generated_text'].replace("\\n\\n", "\n\r").replace("\\n", "\n")
-        elif 'gpt-4' in option or 'o1' in option:
+        elif 'gpt-4' in option:
             msg = openai_textGen(option, prompt, max_token, temperature, top_p)
+        elif 'o1' in option:
+            msg, reasoning_token = o1_textGen(option, prompt, top_k)
         elif 'claude-3-5' in option and not 'anthropic.claude' in option:
             msg = anthropic_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences)
+        elif 'olympus' in option:
+            msg=olympus_textGen(option, prompt, max_token, temperature, top_p, top_k, role_arn="arn:aws:iam::905418197933:role/ovg_developer", region='us-east-1')
         else:
             msg=str(bedrock_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences))
         #except:
         #    msg = "Server error. Check the model access permision"
         #    pass
-        msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms, Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
+        if 'o1' in option:
+            msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms, Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}, Reasoning tokens: {reasoning_token}"
+        else:
+            msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms, Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.messages.append({"role": "assistant", "content": msg_footer})
         st.chat_message("ai", avatar='🤵').write(msg_footer)
         # Ouptut TTS

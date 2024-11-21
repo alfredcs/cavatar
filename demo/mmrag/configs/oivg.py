@@ -251,6 +251,63 @@ def t2v_ovg(video_prompt:str, role_arn:str, v_length:int=6, s3_destination_bucke
             print(json.dumps(invocation_job, indent=2, default=str))
     return file_path
 
+##
+# Text
+##
+def olympus_textGen(model_id, prompt, max_tokens, temperature, top_p, top_k, role_arn, region='us-east-1'):
+    # Create an STS client
+    sts_client = boto3.client('sts')
+
+    # Assume the specified role
+    assumed_role = sts_client.assume_role(
+        RoleArn=role_arn,
+        RoleSessionName='CallBedrockOVG'
+    )
+
+    # Extract temporary credentials
+    credentials = assumed_role['Credentials']
+
+    # Call Bedrock
+    bedrock_runtime = boto3.client(
+        "bedrock-runtime",
+        region_name=region,  # You must use us-east-1 during the beta period.
+        endpoint_url="https://bedrock-runtime.us-east-1.amazonaws.com",
+        aws_access_key_id=credentials['AccessKeyId'],
+        aws_secret_access_key=credentials['SecretAccessKey'],
+        aws_session_token=credentials['SessionToken'],
+    )
+    
+    request_body = {
+        "system": [
+            {"text": "You write JSON objects based on the given instructions"}
+        ],
+        "messages": [
+            {
+                "role": "user",
+                "content": [{"text": prompt}]
+            },
+            {
+                "role": "assistant",
+                "content": [{"text": " Here is the JSON response: ```json"}]
+            },
+        ],
+        "inferenceConfig": {
+            "max_new_tokens": max_tokens,
+            "top_p": top_p,
+            "top_k": top_k,
+            "temperature": temperature,
+        }
+    }
+    
+    # Invoke the model and extract the response body.
+    response = bedrock_runtime.invoke_model(
+        modelId=model_id, #"amazon.Olympus-micro-v1:0",
+        body=json.dumps(request_body)
+    )
+    model_response = json.loads(response["body"].read())
+    return model_response["output"]["message"]["content"][0]["text"]
+
+
 if __name__ == "__main__":
     prompt = "A high res, 4k image of fall foliage with tree on different layers ofcolors from red, orange, yellow to all season green with snow covered mountain peaks in the backgroung and running creak at the front vivid color and photoreastic"
     neg_prompt = "human, single color tree"

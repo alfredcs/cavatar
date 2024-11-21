@@ -140,7 +140,7 @@ def google_search(query: str, num_results: int=5):
     for item in google_results:
         try:
             # Send a GET request to the URL
-            if ('link' not in item) or('youtube' in item['link'].lower()):
+            if ('link' not in item) or ('youtube' in item['link'].lower()):
                 continue
             response = requests.get(item['link'])
             # Parse the HTML content using BeautifulSoup
@@ -1203,6 +1203,27 @@ def openai_textGen(model_name, prompt, max_output_tokens, temperature, top_p):
         top_p=top_p,
     )
     return response.choices[0].message.content
+
+def o1_textGen(model_name, prompt, top_k):
+    ''' Best Prompting Practices:
+    1. Keep prompts concise and clear: The models thrive on short, direct instructions without the need for elaborate explanations.
+    3. Avoid chain-of-thought prompts: These models handle reasoning internally, so there’s no need to ask them to “think step by step” or “explain your reasoning.”
+    4. Utilize delimiters for clarity: Incorporate delimiters like triple quotation marks, XML tags, or section headers to clearly define different parts of the input.
+    5. Limit extra context in retrieval-augmented generation (RAG): When adding context or documents, include only the most pertinent information to avoid complicating the model’s response.
+    '''
+    openai_client = OpenAI(api_key=os.getenv('openai_api_token'))
+    response_with_limit = openai_client.chat.completions.create(
+        model=model_name,
+        messages=[
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
+        max_completion_tokens=top_k
+    )
+    return(response_with_limit.choices[0].message.content, response_with_limit.usage)
+
 
 # --- Photo gen --- 
 def gen_photo_bytes(prompt: str, url:str):
