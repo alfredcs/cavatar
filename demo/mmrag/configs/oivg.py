@@ -4,6 +4,7 @@ import botocore
 from PIL import Image
 import os
 import base64
+import imghdr
 import io
 from random import randint
 #from datetime import datetime
@@ -448,13 +449,14 @@ def o1_image(option, prompt, image_binary_data, max_token, temperature, top_p, t
     # Define a "user" message including both the image and a text prompt.
     base_64_encoded_data = base64.b64encode(image_binary_data.getvalue())
     image_base64_string = base_64_encoded_data.decode("utf-8")
+    image_type = imghdr.what(image_binary_data)
     message_list = [
         {
             "role": "user",
             "content": [
                 {
                     "image": {
-                        "format": "png",
+                        "format": image_type, #"png",
                         "source": {"bytes": image_base64_string},
                     }
                 },

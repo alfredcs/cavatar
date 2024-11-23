@@ -128,7 +128,7 @@ with st.sidebar:
         value='Basic',
         options=['Basic', 'Multimodal', 'Search', 'Files'])#, 'Insert', 'Retrieval', 'Stock'])
     if 'Search' in rag_on:
-        doc_num = st.slider('Choose max number of documents', 1, 8, 3)
+        doc_num = st.slider('Choose max number of documents', 1, 4, 2)
         #embedding_model_id = st.selectbox('Choose Embedding Model',('amazon.titan-embed-g1-text-02', 'amazon.titan-embed-image-v1'))
         embedding_model_id = 'amazon.titan-embed-g1-text-02'
         rag_search = True
@@ -244,22 +244,22 @@ with st.sidebar:
     st.divider()
     st.title(':orange[Model Config] :pencil2:') 
     if 'Search' in rag_on:
-        option = st.selectbox('Choose Model',('anthropic.claude-3-5-haiku-20241022-v1:0',
-                                              'anthropic.claude-3-5-sonnet-20241022-v2:0',
-                                              'amazon.olympus-1-lite-v1:0',
-                                              'amazon.olympus-micro-v1:0'
+        option = st.selectbox('Choose Model',('amazon.olympus-1-lite-v1:0',
+                                              'amazon.olympus-micro-v1:0',
+                                              'anthropic.claude-3-5-haiku-20241022-v1:0',
+                                              'anthropic.claude-3-5-sonnet-20241022-v2:0'
                                              ))
     elif 'Multimodal' in rag_on:
-         option = st.selectbox('Choose Model',('anthropic.claude-3-5-sonnet-20241022-v2:0',
-                                               'anthropic.claude-3-haiku-20240307-v1:0', 
-                                               'amazon.olympus-1-lite-v1:0'
+         option = st.selectbox('Choose Model',('amazon.olympus-1-lite-v1:0',
+                                               'anthropic.claude-3-5-sonnet-20241022-v2:0',
+                                               'anthropic.claude-3-haiku-20240307-v1:0'
                                              ))
     elif 'Files' in rag_on:
-         option = st.selectbox('Choose Model',('anthropic.claude-3-5-haiku-20241022-v1:0',
+         option = st.selectbox('Choose Model',('amazon.olympus-1-lite-v1:0',
+                                                'amazon.olympus-micro-v1:0',
+                                                'anthropic.claude-3-5-haiku-20241022-v1:0',
                                                 'anthropic.claude-3-haiku-20240307-v1:0', 
-                                                'anthropic.claude-3-5-sonnet-20241022-v2:0',
-                                                'amazon.olympus-1-lite-v1:0',
-                                                'amazon.olympus-micro-v1:0'
+                                                'anthropic.claude-3-5-sonnet-20241022-v2:0'
                                              ))
     elif 'Blog' in rag_on:
         option = st.selectbox('Choose Model',('anthropic.claude-3-5-haiku-20241022-v1:0',
@@ -269,11 +269,12 @@ with st.sidebar:
                                               'mistral.mistral-large-2407-v1:0',
                                              ))
     else:
-        option = st.selectbox('Choose Model',('anthropic.claude-3-5-haiku-20241022-v1:0',
+        option = st.selectbox('Choose Model',('amazon.olympus-1-lite-v1:0',
+                                              'amazon.olympus-micro-v1:0',
+                                              'anthropic.claude-3-5-haiku-20241022-v1:0',
                                               'anthropic.claude-3-haiku-20240307-v1:0', 
-                                              'anthropic.claude-3-5-sonnet-20241022-v2:0',
-                                              'amazon.olympus-1-lite-v1:0',
-                                              'amazon.olympus-micro-v1:0'))
+                                              'anthropic.claude-3-5-sonnet-20241022-v2:0'
+                                             ))
         
     #if 'Basic' in rag_on or 'Files' in rag_on or 'Multimodal' in rag_on:
     if 'Multimodal' not in rag_on or 'Blog' in rag_on or 'Stock' not in rag_on:
@@ -337,7 +338,7 @@ if rag_search:
         st.chat_message("user").write(prompt)
         
         ## Tavily only
-        if doc_num == 3:
+        if doc_num > 3:
             docs =  tavily_search(prompt, num_results=doc_num)
             documents = docs['documents']
             urls = docs['urls'][0:doc_num]
@@ -445,7 +446,7 @@ elif image_caption or image_argmentation:
         #    except:
         #        msg = "SAM2 server timeout. Please check image format and size and retry. " + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
         #        pass
-        elif 'conditioning' in action.lower():
+        elif 'to_be_implemented_conditioning' in action.lower():
             try:
                 option = 'amazon.titan-image-generator-v2:0'
                 base64_str = bedrock_image_processing(option, prompt, action, iheight=1024, iwidth=1024, src_image=bytes_data, color_string=None, image_quality='premium', image_n=1, cfg=7.5, seed=random.randint(100, 500000))
@@ -623,7 +624,8 @@ elif (record_audio_bytes and len(voice_prompt) > 3):
             #action = classify_query(prompt, 'image generation, image upscaling, news, others', 'anthropic.claude-3-haiku-20240307-v1:0')
             
             if 'olympus' in option.lower():
-                msg = olympus_textGen(option, prompt, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region=o1_region)
+                #msg = olympus_textGen(option, prompt, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region=o1_region)
+                msg = olympus_textGen_streaming(option, prompt, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region=o1_region)
             else:
                 msg=bedrock_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences)
             if isinstance(msg, set):
