@@ -202,7 +202,7 @@ def download_video_for_invocation_arn(invocation_arn: str, role_arn:str, bucket_
     # If we reach this point, no MP4 file was found.
     print(f"Problem: No MP4 file was found in S3 at {bucket_name}/{invocation_id}")
 
-def t2v_ovg(video_prompt:str, role_arn:str, v_length:int=6, s3_destination_bucket:str="ovg-videos", region='us-east-1'):
+def t2v_ovg(video_prompt:str, role_arn:str, v_length:int, region: str='us-east-1', s3_destination_bucket:str="ovg-videos"):
     """
     Assume an IAM role and create an S3 bucket
 
@@ -215,7 +215,7 @@ def t2v_ovg(video_prompt:str, role_arn:str, v_length:int=6, s3_destination_bucke
         "taskType": "TEXT_VIDEO",  # This is the only task type supported in Beta. Other tasks types will be supported at launch
         "textToVideoParams": {"text": video_prompt},
         "videoGenerationConfig": {
-            "seconds": v_length,  # 6 is the only supported value currently.
+            "durationSeconds": v_length,  # 6 is the only supported value currently.
             "fps": 24,  # 24 is the only supported value currently.
             "dimension": "1280x720",  # "1280x720" is the only supported value currently.
             "seed": randint(

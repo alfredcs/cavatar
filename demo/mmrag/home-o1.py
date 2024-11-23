@@ -126,7 +126,7 @@ with st.sidebar:
     rag_on = st.select_slider(
         '',
         value='Basic',
-        options=['Basic', 'Search', 'Multimodal', 'Files'])#, 'Insert', 'Retrieval', 'Stock'])
+        options=['Basic', 'Multimodal', 'Search', 'Files'])#, 'Insert', 'Retrieval', 'Stock'])
     if 'Search' in rag_on:
         doc_num = st.slider('Choose max number of documents', 1, 8, 3)
         #embedding_model_id = st.selectbox('Choose Embedding Model',('amazon.titan-embed-g1-text-02', 'amazon.titan-embed-image-v1'))
@@ -397,14 +397,11 @@ elif audio_transcibe:
         st.chat_message("user").write(prompt)
         asr_text = get_asr(temp_audio_file)
         prompt2 = f"{prompt}. Your answer should be strictly based on the context in {asr_text}."
-        if 'claude-3-5' in option and not 'anthropic.claude' in option:
-            msg = anthropic_textGen(option, prompt2, max_token, temperature, top_p, top_k, stop_sequences)
-        elif 'gpt-4' in option:
-            msg = openai_textGen(option, prompt2, max_token, temperature, top_p)
-        elif 'llama3-1-8b' in option.lower():
-            msg = tgi_textGen2('http://video.cavatar.info:8081/generate', prompt2[:8000], max_token, temperature, top_p, top_k)
+        if 'olympus' in option.lower():
+            msg=olympus_textGen(option, prompt2, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region=o1_region)
         else:
-            msg = bedrock_textGen(option, prompt2, max_token, temperature, top_p, top_k, stop_sequences)
+            msg=str(bedrock_textGen(option, prompt2, max_token, temperature, top_p, top_k, stop_sequences))
+            
         msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms, Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.messages.append({"role": "assistant", "content": msg_footer})
         st.chat_message("ai", avatar='🔊').write(msg_footer)
@@ -472,7 +469,12 @@ elif image_caption or image_argmentation:
                 base64_str = bedrock_imageGen(option, prompt, iheight=1024, iwidth=1024, src_image=None, image_quality='premium', image_n=1, cfg=random.uniform(3.2, 9.0), seed=random.randint(0, 500000))
                 new_image = Image.open(io.BytesIO(base64.decodebytes(bytes(base64_str, "utf-8"))))
                 st.image(new_image, output_format="png", use_column_width='auto')
-            elif 'olympus' in prompt.lower():
+            elif 'flux' in prompt.lower():
+                option = 'flux.1.dev' #'stability.stable-diffusion-xl-v1:0' # Or 'amazon.titan-image-generator-v1'
+                url = "http://video.cavatar.info:8080/generate?prompt="
+                new_image = gen_photo_bytes(prompt, url)
+                st.image(new_image, output_format="png", use_column_width='auto')
+            else:
                 option = 'amazon.olympus-image-generator-v1:0'
                 neg_prompt="Bad anatomy, Bad proportions, Deformed, Disconnected limbs, Disfigured, Worst quality, Normal quality, Low quality, Low res, Blurry, Jpeg artifacts, Grainy."
                 image_n = top_k if top_k < 5 else 1
@@ -481,21 +483,10 @@ elif image_caption or image_argmentation:
                     msg = "Make sure your prompt meets guardrail requirements."
                 for new_image in new_images:
                     st.image(new_image, output_format="png", use_column_width='auto')
-            else:
-                option = 'flux.1.dev' #'stability.stable-diffusion-xl-v1:0' # Or 'amazon.titan-image-generator-v1'
-                url = "http://video.cavatar.info:8080/generate?prompt="
-                new_image = gen_photo_bytes(prompt, url)
-                st.image(new_image, output_format="png", use_column_width='auto')
+                    
             msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms"     
         elif 'video generation' in action.lower():
-            if 'olympus' in prompt.lower():
-                option = 'amazon.olympus-video-generator-v1:0'
-                file_name = t2v_ovg(video_prompt=prompt, role_arn="arn:aws:iam::905418197933:role/ovg_developer")
-                with open(file_name, 'rb') as file:
-                    mp4_bytes = file.read()
-                    st.video(mp4_bytes)
-                    msg_footer = "\n\n ✒︎***Content created by using:*** "+ option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms"
-            else:
+            if 't2v' in prompt.lower():
                 option = 'T2V-Turbo_v2'
                 url = "http://video.cavatar.info:8083/video_generate?prompt="
                 response = requests.post(url+prompt)
@@ -505,6 +496,13 @@ elif image_caption or image_argmentation:
                     msg_footer = "\n\n ✒︎***Content created by using:*** "+ option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms"  
                 else:
                     msg_footer = f"Error generating video from {url}"
+            else:
+                option = 'amazon.olympus-video-generator-v1:0'
+                file_name = t2v_ovg(video_prompt=prompt, role_arn=o1_sts_role_arn, v_length=6, region=o1_region)
+                with open(file_name, 'rb') as file:
+                    mp4_bytes = file.read()
+                    st.video(mp4_bytes)
+                    msg_footer = "\n\n ✒︎***Content created by using:*** "+ option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms"
         elif 'music generation' in action.lower():
             option2 = 'MusicGen-Large'
             url = "http://video.cavatar.info:8084/music_generate?prompt="
