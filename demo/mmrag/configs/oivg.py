@@ -380,14 +380,16 @@ def olympus_textGen_streaming(model_id, prompt, max_tokens, temperature, top_p, 
             "temperature": temperature,
         }
     }
-    
+    start_time = datetime.datetime.now()
     # Invoke the model and extract the response body.
     response = bedrock_runtime.invoke_model_with_response_stream(
         modelId=model_id, #"amazon.Olympus-micro-v1:0",
         body=json.dumps(request_body)
     )
+    
     request_id = response.get("ResponseMetadata").get("RequestId")
     chunk_count = 0
+    stream_str = ''
     time_to_first_token = None
     # Process the response stream
     stream = response.get("body")
@@ -402,20 +404,22 @@ def olympus_textGen_streaming(model_id, prompt, max_tokens, temperature, top_p, 
                 content_block_delta = chunk_json.get("contentBlockDelta")
                 if content_block_delta:
                     if time_to_first_token is None:
-                        time_to_first_token = datetime.now() - start_time
+                        time_to_first_token = datetime.datetime.now() - start_time
                         print(f"Time to first token: {time_to_first_token}")
     
                     chunk_count += 1
-                    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S:%f")
+                    current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S:%f")
                     # print(f"{current_time} - ", end="")
-                    return content_block_delta.get("delta").get("text")
+                    #stream_str = content_block_delta.get("delta").get("text")
+                    yield  content_block_delta.get("delta").get("text")
         #print(f"Total chunks: {chunk_count}")
+        #return stream_str
     else:
-        return("No response stream received.")
-    
+        yield "No response stream received."
 
-    model_response = json.loads(response["body"].read())
-    return model_response["output"]["message"]["content"][0]["text"]
+    yield f"\n\n ✒︎***Content created by using:*** {model_id}, latency: {str((datetime.datetime.now() - start_time)).replace('0:00:', '')} sec" # * 1000:.2f} ms"
+    #model_response = json.loads(response["body"].read())
+    #return model_response["output"]["message"]["content"][0]["text"]
 
 ###
 # O1 image 

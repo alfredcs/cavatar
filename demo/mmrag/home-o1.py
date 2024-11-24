@@ -274,7 +274,7 @@ with st.sidebar:
     # --- Audio query -----#
     st.divider()
     st.header(':green[Enable voice input]')# :microphone:')
-    record_audio_bytes = st.audio_input("Record a voice message")
+    record_audio_bytes = st.audio_input("Toggle mic to start/stop recording")
     if record_audio_bytes:
         #st.audio(record_audio_bytes, format="audio/wav")#, start_time=0, *, sample_rate=None)
         with open(temp_audio_file, 'wb') as audio_file:
@@ -282,7 +282,7 @@ with st.sidebar:
         if os.path.exists(temp_audio_file):
             voice_prompt = get_asr(temp_audio_file)
             voice_prompt = "" if voice_prompt.lower() in ['please stop audio.', 'stop audio.'] else voice_prompt
-    st.caption("Press space and hit ↩️ for asr activation")
+    st.caption("Press space bar and hit ↩️ for activation")
         
     # ---- Clear chat history ----
     st.divider()
@@ -604,7 +604,7 @@ elif (record_audio_bytes and len(voice_prompt) > 3):
             if 'olympus' in option.lower():
                 #msg = olympus_textGen(option, prompt, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region=o1_region)
                 #msg = olympus_textGen_streaming(option, prompt, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region=o1_region)
-                st.write_stream(olympus_textGen_streaming(option, prompt, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region=o1_region))
+                msg = st.write_stream(olympus_textGen_streaming(option, prompt, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region=o1_region))
             else:
                 msg=bedrock_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences)
             if isinstance(msg, set):
