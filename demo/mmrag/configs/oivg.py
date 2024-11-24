@@ -25,6 +25,11 @@ from langchain_core.runnables import RunnableParallel, RunnablePassthrough
 from langchain_community.document_loaders import WebBaseLoader
 from langchain_community.document_loaders.merge import MergedDataLoader
 from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain_community.document_loaders.pdf import PyMuPDFLoader
+from langchain_community.document_loaders import AsyncHtmlLoader
+from langchain_community.document_transformers import Html2TextTransformer
+
+
 
 retrieval_qa_chat_prompt = hub.pull("langchain-ai/retrieval-qa-chat")
 
@@ -447,23 +452,30 @@ def o1_image(option, prompt, image_binary_data, max_token, temperature, top_p, t
     ]
     
     # Define a "user" message including both the image and a text prompt.
-    base_64_encoded_data = base64.b64encode(image_binary_data.getvalue())
-    image_base64_string = base_64_encoded_data.decode("utf-8")
-    image_type = imghdr.what(image_binary_data)
+    content = [
+        {
+            "text": prompt
+        }
+    ]
+
+    for image_bin in image_binary_data:
+        base_64_encoded_data = base64.b64encode(image_bin)
+        image_base64_string = base_64_encoded_data.decode("utf-8")
+        image_type = imghdr.what(io.BytesIO(image_bin))
+
+        content.append(
+            {
+                "image": {
+                    "format": image_type, #"png",
+                    "source": {"bytes": image_base64_string},
+                }
+            }
+        )
+    
     message_list = [
         {
             "role": "user",
-            "content": [
-                {
-                    "image": {
-                        "format": image_type, #"png",
-                        "source": {"bytes": image_base64_string},
-                    }
-                },
-                {
-                    "text": prompt
-                }
-            ],
+            "content": content
         }
     ]
     
@@ -516,7 +528,8 @@ def o1_video(option, prompt, video_file_name, max_token, temperature, top_p, top
         }
     ]
     
-    # Define a "user" message including both the image and a text prompt.
+    # Define a "user" message including both the image and a text prompt. 
+    # Value at 'body' failed to satisfy constraint: Member must have length less than or equal to 25000000
     with open(video_file_name, "rb") as video_file:
         video_binary_data = video_file.read()
         base_64_encoded_data = base64.b64encode(video_binary_data) #.getvalue())
@@ -717,20 +730,24 @@ def extract_urls_o1(urls: list, query: str, model_id: str, embedding_model_id: s
     br_embedding = BedrockEmbeddings(client=boto3.client('bedrock-runtime'), model_id=embedding_model_id)
 
     # Load
-    xml_loader = WebBaseLoader(urls)
+    xml_loader = WebBaseLoader(urls[0])
     xml_loader.requests_per_second = 1
     loaders.append(xml_loader)
     if check_urls(urls, '.html') or check_urls(urls, '.htm'):
         html_loader = AsyncHtmlLoader(urls)
         loaders.append(html_loader)
     if check_urls(urls, '.pdf'):
-        pdf_loader = PyMuPDFLoader(urls)
+        pdf_loader = PyMuPDFLoader(urls[0])
         loaders.append(pdf_loader)
     loader_all = MergedDataLoader(loaders=loaders)
     docs_all = loader_all.load()
-    from langchain_community.document_transformers import Html2TextTransformer
 
     html2text = Html2TextTransformer()
+    docs_transformed = html2text.transform_documents(docs_all)
+    text_str = ''
+    for doc_transformed in docs_transformed:
+        text_str += doc_transformed.page_content
+
     ''' # Olympus has NOT been tested with LangChain
     docs_all_transformed = html2text.transform_documents(docs_all)
 
@@ -757,7 +774,7 @@ def extract_urls_o1(urls: list, query: str, model_id: str, embedding_model_id: s
     )
     res = retrieval_chain.invoke({"input":query})
     '''
-    prompt2 = f"{query}. Your answer should be strictly based on the context in {html2text}."
+    prompt2 = f"{query}. Your answer should be strictly based on the context in {text_str}."
     return olympus_textGen(model_id, prompt2, max_tokens, temperature, top_p, top_k, role_arn, region)
 
 

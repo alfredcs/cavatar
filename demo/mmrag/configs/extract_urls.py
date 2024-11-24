@@ -97,7 +97,7 @@ def extract_urls(urls: list, query: str, model_id: str, embedding_model_id: str)
         html_loader = AsyncHtmlLoader(urls)
         loaders.append(html_loader)
     if check_urls(urls, '.pdf'):
-        pdf_loader = PyMuPDFLoader(urls)
+        pdf_loader = PyMuPDFLoader(urls[0])
         loaders.append(pdf_loader)
     loader_all = MergedDataLoader(loaders=loaders)
     docs_all = loader_all.load()

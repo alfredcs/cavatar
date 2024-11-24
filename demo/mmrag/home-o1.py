@@ -134,25 +134,29 @@ with st.sidebar:
         rag_search = True
     elif 'Multimodal' in rag_on:
         image = None
-        upload_file = st.file_uploader("Upload your image/video here.", accept_multiple_files=False, type=["jpg", "png", "webp", "mp4", "mov", "mp3", "wav"])
+        bytes_data = []
+        upload_files = st.file_uploader("Upload your image/video here.", accept_multiple_files=True, type=["jpg", "png", "webp", "mp4", "mov", "mp3", "wav"])
         image_url = st.text_input("Or Input Image/Video/Audio URL", key="image_url", type="default")
-        if upload_file is not None:
+        if upload_files is not None and len(upload_files) > 0:
             # Check if the uploaded file is an image
-            _, upload_file_extension = os.path.splitext(upload_file.name)
+            _, upload_file_extension = os.path.splitext(upload_files[0].name)
             if upload_file_extension in [".mp3", ".wav"]:
-                audio_bytes = upload_file.read()
+                audio_bytes = upload_files[0].read()
                 with open(temp_audio_file, 'wb') as audio_file:
                     audio_file.write(audio_bytes)
                 st.audio(audio_bytes, format="audio/wav")
                 audio_transcibe = True
             elif upload_file_extension in [".jpg", ".png", ".webp"]:
-                bytes_data = upload_file.read()
-                image =  (io.BytesIO(bytes_data))
-                st.image(image)
+                for file in upload_files:
+                    file_bytes = file.read()
+                    bytes_data.append(file_bytes)
+                    image = (io.BytesIO(file_bytes))
+                    st.image(image)
+
                 image_caption = True
             elif upload_file_extension in [".mp4", ".mov"]:
                 # Check if the uploaded file is a video
-                video_bytes = upload_file.getvalue()
+                video_bytes = upload_files[0].getvalue()
                 with open(video_file_name, 'wb') as f:
                     f.write(video_bytes)
                 st.video(video_bytes)
@@ -166,9 +170,10 @@ with st.sidebar:
                 st.audio(response.content, format="audio/wav")
                 audio_transcibe = True
             elif response.status_code == 200 and 'image' in response.headers.get('Content-Type'):
-                bytes_data = response.content #was image_data
+                image_data = response.content
+                bytes_data.append(image_data)
                 # Convert the image data to a BytesIO object
-                image = io.BytesIO(bytes_data)
+                image = io.BytesIO(image_data)
                 st.image(image)
                 image_caption = True
             elif response.status_code == 200 and 'video' in response.headers.get('Content-Type'):
@@ -180,8 +185,8 @@ with st.sidebar:
         else:
             image_argmentation = True
     elif 'Files' in rag_on:
-        upload_docs = st.file_uploader("Upload your pdf/doc/txt files.", accept_multiple_files=True, type=["pdf", "doc", "csv", "json", "txt", "xml"])
-        file_urls = st.text_input("Or input URLs seperated by ','", key="file_urls", type="default")
+        upload_docs = st.file_uploader("Upload your pdf/doc/txt files.", accept_multiple_files=True, type=["pdf", "csv", "json", "txt", "xml"])
+        file_url = st.text_input("Or an input URL", key="file_urls", type="default")
         fnames = []
         #embedding_model_id = st.selectbox('Choose Embedding Model',('amazon.titan-embed-g1-text-02', 'amazon.titan-embed-image-v1'))
         embedding_model_id = 'amazon.titan-embed-g1-text-02'
@@ -210,35 +215,16 @@ with st.sidebar:
                     st.write(bytes_data[:1000]+"......".encode())
             except:
                 pass
-        elif file_urls is not None and len(file_urls) > 4:
-            file_url_list = file_urls.split(",")
+        elif file_url is not None and len(file_url) > 4:
+            file_url = file_url.rstrip()
             try:
-                response = requests.get(file_url_list[0])
+                response = requests.get(file_url)
                 st.write(f"Extracted: {len(response.content)} bytes")
             except:
                 pass
             #    pdf_viewer(input=pdf_bytes, width=1200)
             file_url_exist = True
-    elif 'Insert' in rag_on:
-        upload_docs = st.file_uploader("Upload your doc here", accept_multiple_files=True, type=['pdf', 'doc', 'jpg', 'png'])
-        # Amazon Bedrock KB only supports titan-embed-text-v1 not g1-text-02
-        embedding_model_id = st.selectbox('Choose Embedding Model',('amazon.titan-embed-text-v2:0', 'amazon.titan-embed-image-v1'))
-        rag_update = True
-    elif 'Retrieval' in rag_on:
-        rag_retrieval = True
-    elif 'Agent' in rag_on:
-        blog_writer = True
-    elif 'Stock' in rag_on:
-        stock_recommend = True
-        financial_trading_inputs = {
-            'stock_selection': st.text_input("Stock tickers or sector (i.e. nvda, NASQA Technology)", value=""),
-            'initial_capital': st.number_input("Investment amount US$", min_value=0, value=1000, step=100),
-            'risk_tolerance': st.selectbox("Risk tolerance level",('Conservative', 'Moderately conservative','Moderately aggressive', 'Aggressive', 'Very aggressive')),
-            'investment_duration': st.text_input("Investment duration (i.e. 6 monthes or 5 years)", value="1 year"),
-            'return_expectation': st.text_input("Return expectation (i.e. x% monthly or y% annual average)", value="5% annual average"),
-            'trading_strategy_preference': st.text_input("Trading freq preference (i.e. bi-weekly or monthly or yearly)", value="Monthly"),
-            'news_impact_consideration': st.checkbox("Consider indirect impacting factors", value=True)
-        }
+    
                 
     #----- Choose models  ------ 
     st.divider()
@@ -521,10 +507,14 @@ elif image_caption or image_argmentation:
         else:
             if "claude" in option and image is not None:
                 msg = anthropic_imageCaption(option, prompt, image, max_token, temperature, top_p, top_k)
-            elif image is not None:
-                msg = o1_image(option, prompt, image, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region=o1_region)
+            elif len(bytes_data) > 0:
+                msg = o1_image(option, prompt, bytes_data, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region=o1_region)
                 width, height = Image.open(image).size
                 tokens = int((height * width)/750)
+            #elif image is not None:
+            #    msg = o1_image(option, prompt, image, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region=o1_region)
+            #    width, height = Image.open(image).size
+            #    tokens = int((height * width)/750)
             else:
                 msg=str(bedrock_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences))
             #width, height = Image.open(image).size
@@ -577,9 +567,9 @@ elif file_url_exist:
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.chat_message("user").write(prompt)
         if 'olympus' in option.lower():
-             msg = extract_urls_o1(file_url_list, prompt, option, embedding_model_id, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region=o1_region)
+             msg = extract_urls_o1([file_url], prompt, option, embedding_model_id, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region=o1_region)
         else:
-            msg = extract_urls(file_url_list, prompt, option, embedding_model_id)
+            msg = extract_urls([file_url], prompt, option, embedding_model_id)
         msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms, Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.messages.append({"role": "assistant", "content": msg_footer})
         st.chat_message("ai", avatar='🗃️').write(msg_footer)
