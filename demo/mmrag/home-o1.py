@@ -1,6 +1,5 @@
 import streamlit as st
 import streamlit.components.v1 as components
-from audio_recorder_streamlit import audio_recorder
 import sys
 import os
 import io
@@ -21,7 +20,7 @@ from concurrent.futures import ThreadPoolExecutor
 module_paths = ["./", "./configs"]
 file_path = "/home/alfred/demos/mmrag/data/"
 video_file_name = "uploaded_video.mp4"
-temp_audio_file = "audio_inut.wav"
+temp_audio_file = "audio_input.wav"
 o1_sts_role_arn = "arn:aws:iam::905418197933:role/ovg_developer"
 o1_region = "us-east-1"
 voice_prompt = ''
@@ -275,24 +274,13 @@ with st.sidebar:
     # --- Audio query -----#
     st.divider()
     st.header(':green[Enable voice input]')# :microphone:')
-    #voice_on = st.toggle('Activate microphone')
-    #if voice_on:
-    record_audio_bytes = audio_recorder(text="Click to record: ", icon_name="fa-solid fa-microphone-slash",
-                                        pause_threshold=2.0, sample_rate=41_000,
-                                        recording_color="#cc0000", neutral_color="#6aa36f",icon_size="2x",)
-    #record_audio_bytes = audio_recorder(icon_size="2x")
-    #record_audio_bytes = audio_recorder(text="",
-    #                                    recording_color="#e8b62c",
-    #                                    neutral_color="#6aa36f",
-    #                                    icon_name="user",
-    #                                    icon_size="6x",)
+    record_audio_bytes = st.audio_input("Record a voice message")
     if record_audio_bytes:
-        st.audio(record_audio_bytes, format="audio/wav")#, start_time=0, *, sample_rate=None)
+        #st.audio(record_audio_bytes, format="audio/wav")#, start_time=0, *, sample_rate=None)
         with open(temp_audio_file, 'wb') as audio_file:
-            audio_file.write(record_audio_bytes)
+            audio_file.write(record_audio_bytes.getvalue())
         if os.path.exists(temp_audio_file):
             voice_prompt = get_asr(temp_audio_file)
-            #voice_prompt = voice_prompt.encode("utf-8").decode("utf-8")
             voice_prompt = "" if voice_prompt.lower() in ['please stop audio.', 'stop audio.'] else voice_prompt
     st.caption("Press space and hit ↩️ for asr activation")
         
@@ -407,7 +395,7 @@ elif image_caption or image_argmentation:
         if 'upscale' in action.lower():
             try:
                 new_image = upscale_image_bytes(bytes_data, prompt)
-                st.image(new_image, output_format="png", use_column_width='auto')
+                st.image(new_image, output_format="png", use_container_width='auto')
                 msg_footer = "\n\n ✒︎***Content created by using:*** Aura V2 " + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
             except:
                 msg_footer = "Server timeout. Please check image format and size and retry. " + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
@@ -417,7 +405,7 @@ elif image_caption or image_argmentation:
                 option = 'amazon.titan-image-generator-v2:0'
                 base64_str = bedrock_image_processing(option, prompt, action, iheight=1024, iwidth=1024, src_image=bytes_data, color_string=None, image_quality='premium', image_n=1, cfg=7.5, seed=random.randint(100, 500000))
                 new_image = Image.open(io.BytesIO(base64.decodebytes(bytes(base64_str, "utf-8"))))
-                st.image(new_image, output_format="png", use_column_width='auto')
+                st.image(new_image, output_format="png", use_container_width='auto')
                 msg_footer = "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
             except:
                 msg_footer = "Image background removal failed. Make sure the image does not contain sensitive info." + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
@@ -426,8 +414,8 @@ elif image_caption or image_argmentation:
         #    try:
         #       #new_image = pred_image_bytes(bytes_data, prompt)
         #        new_image, new_mask = seg_image(bytes_data, prompt)
-        #        st.image(new_image, output_format="png", use_column_width='auto')
-        #        st.image(new_mask, output_format="png", use_column_width='auto')
+        #        st.image(new_image, output_format="png", use_container_width='auto')
+        #        st.image(new_mask, output_format="png", use_container_width='auto')
         #        msg = "\n\n ✒︎***Content created by using:*** EVF-SAM2 " + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
         #    except:
         #        msg = "SAM2 server timeout. Please check image format and size and retry. " + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
@@ -437,7 +425,7 @@ elif image_caption or image_argmentation:
                 option = 'amazon.titan-image-generator-v2:0'
                 base64_str = bedrock_image_processing(option, prompt, action, iheight=1024, iwidth=1024, src_image=bytes_data, color_string=None, image_quality='premium', image_n=1, cfg=7.5, seed=random.randint(100, 500000))
                 new_image = Image.open(io.BytesIO(base64.decodebytes(bytes(base64_str, "utf-8"))))
-                st.image(new_image, output_format="png", use_column_width='auto')
+                st.image(new_image, output_format="png", use_container_width='auto')
                 msg_footer = "\n\n ✒︎***Image conditioned by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" 
             except:
                 msg_footer = "Image conditioning failed. Make sure the image does not contain sensitive info." + f" Latency: {(time.time() - start_time) * 1000:.2f} ms" 
@@ -448,19 +436,19 @@ elif image_caption or image_argmentation:
                 option = 'amazon.titan-image-generator-v2:0'
                 base64_str = bedrock_imageGen(option, prompt, iheight=1024, iwidth=1024, src_image=None, image_quality='premium', image_n=1, cfg=random.uniform(3.2, 9.0), seed=random.randint(0, 500000))
                 new_image = Image.open(io.BytesIO(base64.decodebytes(bytes(base64_str, "utf-8"))))
-                st.image(new_image, output_format="png", use_column_width='auto')
+                st.image(new_image, output_format="png", use_container_width='auto')
             elif 'sd3' in prompt.lower() or 'stable diffusion' in prompt.lower() or 'ultra' in prompt.lower():
                 option = 'stability.stable-image-ultra-v1:0' # 'SD3 Medium' 
                 #url = "http://infs.cavatar.info:8083/generate?prompt="
                 #new_image = gen_photo_bytes(prompt, url)
                 base64_str = bedrock_imageGen(option, prompt, iheight=1024, iwidth=1024, src_image=None, image_quality='premium', image_n=1, cfg=random.uniform(3.2, 9.0), seed=random.randint(0, 500000))
                 new_image = Image.open(io.BytesIO(base64.decodebytes(bytes(base64_str, "utf-8"))))
-                st.image(new_image, output_format="png", use_column_width='auto')
+                st.image(new_image, output_format="png", use_container_width='auto')
             elif 'flux' in prompt.lower():
                 option = 'flux.1.dev' #'stability.stable-diffusion-xl-v1:0' # Or 'amazon.titan-image-generator-v1'
                 url = "http://video.cavatar.info:8080/generate?prompt="
                 new_image = gen_photo_bytes(prompt, url)
-                st.image(new_image, output_format="png", use_column_width='auto')
+                st.image(new_image, output_format="png", use_container_width='auto')
             else:
                 option = 'amazon.olympus-image-generator-v1:0'
                 neg_prompt="Bad anatomy, Bad proportions, Deformed, Disconnected limbs, Disfigured, Worst quality, Normal quality, Low quality, Low res, Blurry, Jpeg artifacts, Grainy."
@@ -469,7 +457,7 @@ elif image_caption or image_argmentation:
                 if len(new_images) < 1:
                     msg = "Make sure your prompt meets guardrail requirements."
                 for new_image in new_images:
-                    st.image(new_image, output_format="png", use_column_width='auto')
+                    st.image(new_image, output_format="png", use_container_width='auto')
                     
             msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms"     
         elif 'video generation' in action.lower():
@@ -615,14 +603,16 @@ elif (record_audio_bytes and len(voice_prompt) > 3):
             
             if 'olympus' in option.lower():
                 #msg = olympus_textGen(option, prompt, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region=o1_region)
-                msg = olympus_textGen_streaming(option, prompt, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region=o1_region)
+                #msg = olympus_textGen_streaming(option, prompt, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region=o1_region)
+                st.write_stream(olympus_textGen_streaming(option, prompt, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region=o1_region))
             else:
                 msg=bedrock_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences)
             if isinstance(msg, set):
                 msg = str(sorted(list(msg)))
-            msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms, Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
-            st.session_state.messages.append({"role": "assistant", "content": msg_footer})
-            st.chat_message("ai", avatar='🎙️').write(msg_footer)
+            msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms"
+            #st.session_state.messages.append({"role": "assistant", "content": msg_footer})
+            #st.chat_message("ai", avatar='🎙️').write(msg_footer)
+            #st.write(msg_footer)
             # Ouptut TTS
             if msg is not None and len(msg)> 2:
                 st.audio(get_polly_tts(msg))
@@ -632,7 +622,7 @@ elif blog_writer:
         st.chat_message("user").write(prompt)
         blog_crew = blogCrew(prompt, option)
         msg = blog_crew.run().raw
-        msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, latency: {(time.time() - start_time) * 1000:.2f} ms, tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
+        msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, latency: {(time.time() - start_time) * 1000:.2f} ms"
         st.session_state.messages.append({"role": "assistant", "content": msg_footer})
         st.chat_message("ai", avatar='📝').write(msg_footer)
         if msg is not None and len(msg)> 2:
