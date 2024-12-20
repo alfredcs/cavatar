@@ -23,6 +23,7 @@ video_file_name = "uploaded_video.mp4"
 temp_audio_file = "audio_input.wav"
 o1_sts_role_arn = "arn:aws:iam::905418197933:role/ovg_developer"
 o1_region = "us-east-1"
+llama33_70b_region = "us-east-2"
 voice_prompt = ''
 tokens = 0
 
@@ -36,7 +37,7 @@ from video_captioning import *
 from anthropic_tools import *
 from extract_urls import *
 from finance_analyzer_01 import *
-from oivg import *
+from nova import *
 from search_2_google import *
 #from sam2 import *
 
@@ -229,22 +230,25 @@ with st.sidebar:
     st.divider()
     st.title(':orange[Model Config] :pencil2:') 
     if 'Search' in rag_on:
-        option = st.selectbox('Choose Model',('amazon.olympus-1-lite-v1:0',
-                                              'amazon.olympus-micro-v1:0',
-                                              'amazon.olympus-pro-v1:0',
+        option = st.selectbox('Choose Model',(
+                                              'us.amazon.nova-lite-v1:0',
+                                              'us.amazon.nova-micro-v1:0',
+                                              'us.amazon.nova-pro-v1:0',
                                               'anthropic.claude-3-5-haiku-20241022-v1:0',
                                               'anthropic.claude-3-5-sonnet-20241022-v2:0'
                                              ))
     elif 'Multimodal' in rag_on:
-         option = st.selectbox('Choose Model',('amazon.olympus-1-lite-v1:0',
-                                               'amazon.olympus-pro-v1:0',
+         option = st.selectbox('Choose Model',(
+                                               'us.amazon.nova-lite-v1:0',
+                                              'us.amazon.nova-pro-v1:0',
                                                'anthropic.claude-3-5-sonnet-20241022-v2:0',
                                                'anthropic.claude-3-haiku-20240307-v1:0'
                                              ))
     elif 'Files' in rag_on:
-         option = st.selectbox('Choose Model',('amazon.olympus-1-lite-v1:0',
-                                                'amazon.olympus-micro-v1:0',
-                                                'amazon.olympus-pro-v1:0'
+         option = st.selectbox('Choose Model',(
+                                               'us.amazon.nova-lite-v1:0',
+                                              'us.amazon.nova-micro-v1:0',
+                                              'us.amazon.nova-pro-v1:0',
                                                 'anthropic.claude-3-5-haiku-20241022-v1:0',
                                                 'anthropic.claude-3-haiku-20240307-v1:0', 
                                                 'anthropic.claude-3-5-sonnet-20241022-v2:0'
@@ -257,12 +261,14 @@ with st.sidebar:
                                               'mistral.mistral-large-2407-v1:0',
                                              ))
     else:
-        option = st.selectbox('Choose Model',('amazon.olympus-1-lite-v1:0',
-                                              'amazon.olympus-micro-v1:0',
-                                              'amazon.olympus-pro-v1:0',
+        option = st.selectbox('Choose Model',(
+                                              'us.amazon.nova-lite-v1:0',
+                                              'us.amazon.nova-micro-v1:0',
+                                              'us.amazon.nova-pro-v1:0',
                                               'anthropic.claude-3-5-haiku-20241022-v1:0',
                                               'anthropic.claude-3-haiku-20240307-v1:0', 
-                                              'anthropic.claude-3-5-sonnet-20241022-v2:0'
+                                              'anthropic.claude-3-5-sonnet-20241022-v2:0',
+                                              'meta.llama3-3-70b-instruct-v1:0'
                                              ))
         
     #if 'Basic' in rag_on or 'Files' in rag_on or 'Multimodal' in rag_on:
@@ -284,7 +290,7 @@ with st.sidebar:
         with open(temp_audio_file, 'wb') as audio_file:
             audio_file.write(record_audio_bytes.getvalue())
         if os.path.exists(temp_audio_file):
-            voice_prompt = get_asr(temp_audio_file)
+            voice_prompt = get_asr(temp_audio_file).encode('utf-8').decode('unicode_escape')
             voice_prompt = "" if voice_prompt.lower() in ['please stop audio.', 'stop audio.'] else voice_prompt
     if 'Basic' not in rag_on:
         st.caption("Press space bar and hit ↩️ for activation")
@@ -338,7 +344,7 @@ if rag_search:
             st.audio(get_polly_tts(msg))
 
 elif video_caption:
-    if prompt := st.chat_input(placeholder=voice_prompt, on_submit=None, key="user_input"):
+     if prompt := st.chat_input(placeholder=voice_prompt, on_submit=None, key="user_input"):
         prompt=voice_prompt if prompt==' ' else prompt
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.chat_message("user").write(prompt)
@@ -361,11 +367,14 @@ elif video_caption:
                 audio_transcribe = answer2.result()
         
             prompt2 = xml_prompt(captions, audio_transcribe, prompt)
-            msg = olympus_textGen(option, prompt2, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region=o1_region)
+            msg = nova_textGen(option, prompt2, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region=o1_region)
             
         msg += "\n\n 🔊***Audio transcribe:*** " + audio_transcribe + "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {tokens}+{estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.messages.append({"role": "assistant", "content": msg})
         st.chat_message("ai", avatar='🎥').write(msg)
+        # Ouptut TTS
+        if msg is not None and len(msg)> 2:
+            st.audio(get_polly_tts(msg))
 
 ###
 # Audio
@@ -377,8 +386,8 @@ elif audio_transcibe:
         st.chat_message("user").write(prompt)
         asr_text = get_asr(temp_audio_file)
         prompt2 = f"{prompt}. Your answer should be strictly based on the context in {asr_text}."
-        if 'olympus' in option.lower():
-            msg=olympus_textGen(option, prompt2, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region=o1_region)
+        if 'nova' in option.lower():
+            msg=nova_textGen(option, prompt2, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region=o1_region)
         else:
             msg=str(bedrock_textGen(option, prompt2, max_token, temperature, top_p, top_k, stop_sequences))
             
@@ -396,6 +405,7 @@ elif image_caption or image_argmentation:
         prompt=voice_prompt if prompt==' ' else prompt
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.chat_message("user").write(prompt)
+        
         action = classify_query2(prompt, 'anthropic.claude-3-haiku-20240307-v1:0')
         if 'upscale' in action.lower():
             try:
@@ -455,10 +465,13 @@ elif image_caption or image_argmentation:
                 new_image = gen_photo_bytes(prompt, url)
                 st.image(new_image, output_format="png", use_container_width='auto')
             else:
-                option = 'amazon.olympus-image-generator-v1:0'
+                option = 'amazon.nova-canvas-v1:0'
                 neg_prompt="Bad anatomy, Bad proportions, Deformed, Disconnected limbs, Disfigured, Worst quality, Normal quality, Low quality, Low res, Blurry, Jpeg artifacts, Grainy."
                 image_n = top_k if top_k < 5 else 1
-                new_images = t2i_olympus(prompt, neg_prompt=neg_prompt, num_image=image_n)
+                if image:
+                    new_images = i2i_canvas(prompt, image, option, neg_prompt=neg_prompt, num_image=image_n, region_name=o1_region)
+                else:
+                    new_images = t2i_canvas(prompt, option, neg_prompt=neg_prompt, num_image=image_n, region_name=o1_region)
                 if len(new_images) < 1:
                     msg = "Make sure your prompt meets guardrail requirements."
                 for new_image in new_images:
@@ -477,8 +490,8 @@ elif image_caption or image_argmentation:
                 else:
                     msg_footer = f"Error generating video from {url}"
             else:
-                option = 'amazon.olympus-video-generator-v1:0'
-                file_name = t2v_ovg(video_prompt=prompt, role_arn=o1_sts_role_arn, v_length=6, region=o1_region)
+                option = 'amazon.nova-reel-v1:0'
+                file_name = t2v_reel(video_prompt=prompt, model_id=option, role_arn=o1_sts_role_arn, v_length=6, region=o1_region)
                 with open(file_name, 'rb') as file:
                     mp4_bytes = file.read()
                     st.video(mp4_bytes)
@@ -499,9 +512,10 @@ elif image_caption or image_argmentation:
             msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** [IDM-VTON](https://github.com/yisol/IDM-VTON)"
         else:
             if "claude" in option and image is not None:
-                msg = anthropic_imageCaption(option, prompt, image, max_token, temperature, top_p, top_k)
+                #msg = anthropic_imageCaption(option, prompt, image, max_token, temperature, top_p, top_k)
+                msg =  bedrock_get_img_description(option, prompt, image, max_token, temperature, top_p, top_k, stop_sequences)
             elif len(bytes_data) > 0:
-                msg = o1_image(option, prompt, bytes_data, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region=o1_region)
+                msg = nova_image(option, prompt, bytes_data, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region=o1_region)
                 width, height = Image.open(image).size
                 tokens = int((height * width)/750)
             #elif image is not None:
@@ -526,6 +540,7 @@ elif talk_2_pdf:
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.chat_message("user").write(prompt)
         
+        
         #file_path, fnames
         if not pdf_exist:
             xml_texts = ''
@@ -544,7 +559,7 @@ elif talk_2_pdf:
         if 'claude' in option:
             msg = bedrock_textGen(option, prompt2, max_token, temperature, top_p, top_k, stop_sequences)
         else:
-            msg = olympus_textGen(option, prompt2, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region=o1_region)
+            msg = nova_textGen(option, prompt2, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region=o1_region)
         msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms, Tokens In: {estimate_tokens(prompt2, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.messages.append({"role": "assistant", "content": msg_footer})
         st.chat_message("ai", avatar='🗂️').write(msg_footer)
@@ -559,7 +574,7 @@ elif file_url_exist:
         prompt=voice_prompt if prompt==' ' else prompt
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.chat_message("user").write(prompt)
-        if 'olympus' in option.lower():
+        if 'nova' in option.lower():
              msg = extract_urls_o1([file_url], prompt, option, embedding_model_id, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region=o1_region)
         else:
             msg = extract_urls([file_url], prompt, option, embedding_model_id)
@@ -602,17 +617,24 @@ elif rag_retrieval:
 elif (record_audio_bytes and len(voice_prompt) > 3):
         #if prompt := st.chat_input(placeholder=voice_prompt, on_submit=None, key="user_input"):
         #    prompt=voice_prompt if prompt==' ' else prompt
+        #prompt=voice_prompt.encode('utf-8').decode('unicode_escape')
         prompt=voice_prompt
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.chat_message("user").write(prompt)  
         #action = classify_query(prompt, 'image generation, image upscaling, news, others', 'anthropic.claude-3-haiku-20240307-v1:0')
         
-        if 'olympus' in option.lower():
-            #msg = olympus_textGen(option, prompt, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region=o1_region)
-            #msg = olympus_textGen_streaming(option, prompt, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region=o1_region)
-            msg =  st.write_stream(olympus_textGen_streaming(option, prompt, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region=o1_region))
+        if 'nova' in option.lower():
+            msg =  st.write_stream(nova_textGen_streaming(option, prompt, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region_name=o1_region))
+        elif 'llama3-3' in option.lower():
+            msg=bedrock_textGen_cris(option, prompt, max_token, temperature, top_p, top_k, region_name=llama33_70b_region)
+            msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms"
+            st.write(msg_footer)
         else:
-            msg=bedrock_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences)
+            msg=str(bedrock_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences))
+            msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms"
+            st.write(msg_footer)
+            #msg=str(bedrock_textGen_streaming(option, prompt, max_token, temperature, top_p, top_k, stop_sequences))
+            #msg =  st.write_stream(bedrock_textGen_streaming(option, prompt, max_token, temperature, top_p, top_k))
         if isinstance(msg, set):
             msg = str(sorted(list(msg)))
         msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms"
@@ -642,8 +664,10 @@ else:
         st.chat_message("user").write(prompt)
         #try:
         #action = classify_query2(prompt, 'anthropic.claude-3-haiku-20240307-v1:0')
-        if 'olympus' in option.lower():
-            msg=olympus_textGen(option, prompt, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region=o1_region)
+        if 'nova' in option.lower():
+            msg=nova_textGen(option, prompt, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region_name=o1_region)
+        elif 'llama3-3' in option.lower():
+            msg=bedrock_textGen_cris(option, prompt, max_token, temperature, top_p, top_k, region_name=llama33_70b_region)
         else:
             msg=str(bedrock_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences))
         #except:
