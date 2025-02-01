@@ -3,6 +3,7 @@ from langchain_core.documents.base import Document
 import requests
 import os
 import boto3
+import datetime
 import base64
 from io import BytesIO
 from botocore.config import Config
@@ -480,7 +481,8 @@ def retrieval_faiss_dsr1(query, documents, model_id, embedding_model_id:str, chu
     DEEPSEEK_API_KEY = "EMPTY"
     LOCAL_MODEL = "deepseek-ai/DeepSeek-R1-Distill-Llama-70B"
     LOCAL_API_URL = "http://agent.cavatar.info:8080/v1"
-
+    today = datetime.datetime.today().strftime("%D")
+    
     #text_splitter = CharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=over_lap)
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=over_lap, length_function=len, is_separator_regex=False,)
     docs = text_splitter.split_documents(documents)
@@ -506,7 +508,7 @@ def retrieval_faiss_dsr1(query, documents, model_id, embedding_model_id:str, chu
         return "\n\n".join(doc.page_content for doc in docs)
 
     messages = [
-        ("system", """Your are a helpful assistant to provide comprehensive and truthful answers to questions, \n
+        ("system", """Your are a helpful assistant who can provide comprehensive and truthful answers to questions, \n
                     drawing upon all relevant information contained within the specified in {context}. \n 
                     You add value by analyzing the situation and offering insights to enrich your answer. \n
                     Simply say I don't know if you can not find any evidence to match the question. \n
@@ -532,6 +534,9 @@ def retrieval_faiss_dsr1(query, documents, model_id, embedding_model_id:str, chu
 
     results = rag_chain.invoke(query)
     return results
+    #for text in rag_chain.stream(query):
+    #    yield text
+    
 
 def retrieval_chroma(query, model_id, embedding_model_id:str, chunk_size:int=6000, over_lap:int=600, max_tokens: int=2048, temperature: int=0.01, top_p: float=0.90, top_k: int=25, doc_num: int=3):
 

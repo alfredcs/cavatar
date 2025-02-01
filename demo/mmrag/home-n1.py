@@ -4,6 +4,7 @@ import sys
 import os
 import io
 import re
+import datetime
 import json
 import random
 import magic
@@ -324,7 +325,9 @@ if rag_search:
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.chat_message("user").write(prompt)
         
-        ## Tavily only
+        ## Tavily only        
+        today = datetime.datetime.today().strftime("%D")
+        prompt = f"{prompt}. The date today is {today}"
         if doc_num > 3:
             docs =  tavily_search(prompt, num_results=doc_num)
             documents = docs['documents']
@@ -334,13 +337,15 @@ if rag_search:
         #documents, urls = all_search(prompt=prompt, num_results=int(doc_num/2)+1)
         
         if 'claude' in option:
-            msg = retrieval_faiss(prompt, documents, option, embedding_model_id, max_token, temperature, top_p, top_k, doc_num)
+            msg = retrieval_faiss(prompt, documents, option, embedding_model_id, 4000, 400, max_token, temperature, top_p, top_k, doc_num)
             #msg = retrieval_faiss(prompt, documents, option, embedding_model_id, 6000, 600, max_token, temperature, top_p, top_k, doc_num)
         elif 'deepseek' in option.lower():
-            msg = st.write_stream(retrieval_faiss_dsr1(prompt, documents, option, embedding_model_id, 6000, 600, max_token, temperature, top_p, top_k, doc_num))
-            #msg = retrieval_faiss_dsr1(prompt, documents, option, embedding_model_id, 6000, 600, max_token, temperature, top_p, top_k, doc_num)
+            #msg = st.write_stream(retrieval_faiss_dsr1(prompt, documents, option, embedding_model_id, 6000, 600, max_token, temperature, top_p, top_k, doc_num))
+            msg = retrieval_faiss_dsr1(prompt, documents, option, embedding_model_id, 6000, 600, max_token, temperature, top_p, top_k, doc_num)
+            #msg_footer = f"Powered by deepseek"
         else:
             msg = retrieval_o1(prompt, documents, option, embedding_model_id, 6000, 600, max_token, temperature, top_p, top_k, doc_num, role_arn=o1_sts_role_arn, region=o1_region)
+
         msg_footer = f"{msg}\n\n ✧***Sources:***\n\n" + '\n\n\r'.join(urls[0:doc_num])
         msg_footer += f"\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms, Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.messages.append({"role": "assistant", "content": msg_footer})
