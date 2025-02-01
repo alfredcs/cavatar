@@ -33,7 +33,7 @@ from langchain_community.document_transformers import Html2TextTransformer
 from langchain_aws import ChatBedrockConverse
 from botocore.exceptions import ClientError
 
-
+from openai import OpenAI
 
 retrieval_qa_chat_prompt = hub.pull("langchain-ai/retrieval-qa-chat")
 
@@ -392,6 +392,67 @@ def t2v_reel(video_prompt:str, model_id:str, role_arn:str, v_length:int, region:
             print(json.dumps(invocation_job, indent=2, default=str))
     return file_path
 
+
+###
+# Luma Ray v2
+###
+def t2v_luma(video_prompt:str, model_id:str, role_arn:str, v_length:int, region: str='us-west-2', s3_destination_bucket:str="mmrag-images"):
+    body = {
+        "modelId": model_id,
+        "contentType": "application/json",
+        "accept": "application/json",
+        "prompt": video_prompt,
+        "modelInput": {
+            #"prompt": video_prompt,
+            "aspect_ratio": "16:9",
+            "loop": True,
+            "duration": v_length,
+            "resolution": "1024p"
+        },
+    }
+    #bedrock_runtime = get_boto_client(service_name='bedrock-runtime', region=region_name)
+    bedrock_runtime = boto3.client(
+        "bedrock-runtime",
+        region_name=region,  # You must use us-east-1 during the beta period.
+        endpoint_url=f"https://bedrock-runtime.{region}.amazonaws.com",
+        config=Config(read_timeout=350) 
+    )
+    invocation_jobs = bedrock_runtime.start_async_invoke_model(
+        modelId=model_id,
+        #contentType="application/json",
+        #accept="application/json",
+        modelInput=body,
+        outputDataConfig={"s3OutputDataConfig": {"s3Uri": f"s3://{s3_destination_bucket}"}},
+    )
+    
+
+    # Check the status of the job until it's complete.
+    invocation_arn = invocation_jobs["invocationArn"]
+    file_path = ''
+    while True:
+        invocation_job = bedrock_runtime.get_async_invoke_model(
+            invocationArn=invocation_arn
+        )
+    
+        status = invocation_job["status"]
+        if status == "InProgress":
+            time.sleep(1)
+        elif status == "Completed":
+            print("\nJob complete!")
+            # Save the video to disk.
+            s3_bucket = (
+                invocation_job["outputDataConfig"]["s3OutputDataConfig"]["s3Uri"]
+                .split("//")[1]
+                .split("/")[0]
+            )
+            file_path = download_video_for_invocation_arn(invocation_arn, role_arn, s3_destination_bucket, "./output")
+            break
+        else:
+            print("\nJob failed!")
+            print("\nResponse:")
+            print(json.dumps(invocation_job, indent=2, default=str))
+    return file_path
+    
 ##
 # Text
 ##
@@ -842,7 +903,59 @@ def extract_urls_o1(urls: list, query: str, model_id: str, embedding_model_id: s
     prompt2 = f"{query}. Your answer should be strictly based on the context in {text_str}."
     return nova_textGen(model_id, prompt2, max_tokens, temperature, top_p, top_k, role_arn, region)
 
+###
+# Local OpenAI for DeepSeek
+###
+def local_openai_textGen(model_id: str, prompt: str, max_token: int, temperature: float, top_p: float, top_k: int):
+    openai_api_key = "EMPTY"
+    openai_api_base = "http://agent.cavatar.info:8080/v1"
+    
+    client = OpenAI(
+        api_key=openai_api_key,
+        base_url=openai_api_base,
+    )
 
+    chat_response = client.chat.completions.create(
+        model=model_id,
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant. Please answer the user question accurately and truthfully. Also please make sure to think carefully before answering"},
+            {"role": "user", "content": prompt},
+        ],
+        stream=False,
+        temperature=temperature,
+        max_tokens=max_token,
+        top_p=top_p
+    )
+    usages = f'Completion_toekns: {chat_response.usage.completion_tokens}, Prompt_tokens: {chat_response.usage.prompt_tokens},  Total_tokens:{chat_response.usage.total_tokens}'
+    return chat_response.choices[0].message.content, usages
+
+
+def local_openai_textGen_streaming(model_id: str, prompt: str, max_token: int, temperature: float, top_p: float, top_k: int):
+    openai_api_key = "EMPTY"
+    openai_api_base = "http://agent.cavatar.info:8080/v1"
+    start_time = datetime.datetime.now()
+    
+    client = OpenAI(
+        api_key=openai_api_key,
+        base_url=openai_api_base,
+    )
+
+    chat_response = client.chat.completions.create(
+        model=model_id,
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant. Please answer the user question accurately and truthfully. Also please make sure to think carefully before answering"},
+            {"role": "user", "content": prompt},
+        ],
+        stream=True,
+        temperature=temperature,
+        max_tokens=max_token,
+        top_p=top_p
+    )
+    for chunk in chat_response:
+        yield chunk.choices[0].delta.content #, end="", flush=True)
+
+    yield f"\n\n ✒︎***Content created by using:*** {model_id}, latency: {str((datetime.datetime.now() - start_time)).replace('0:00:', '')} sec" # * 1000:.2f} ms"
+    
 ###
 # Main
 ###
