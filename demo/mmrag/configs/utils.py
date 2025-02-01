@@ -39,6 +39,8 @@ from langchain.agents import AgentExecutor, create_react_agent, initialize_agent
 from langchain_community.utilities.serpapi import SerpAPIWrapper
 from serpapi import GoogleSearch #, BingSearch
 from langchain_community.tools.tavily_search import TavilySearchResults
+from langchain_deepseek import ChatDeepSeek
+
 
 from langchain_community.vectorstores import FAISS
 from langchain_chroma import Chroma
@@ -473,6 +475,64 @@ def retrieval_faiss(query, documents, model_id, embedding_model_id:str, chunk_si
     results = rag_chain.invoke(query)
     return results
 
+def retrieval_faiss_dsr1(query, documents, model_id, embedding_model_id:str, chunk_size:int=6000, over_lap:int=600, max_tokens: int=2048, temperature: int=0.01, top_p: float=0.90, top_k: int=25, doc_num: int=3):
+
+    DEEPSEEK_API_KEY = "EMPTY"
+    LOCAL_MODEL = "deepseek-ai/DeepSeek-R1-Distill-Llama-70B"
+    LOCAL_API_URL = "http://agent.cavatar.info:8080/v1"
+
+    #text_splitter = CharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=over_lap)
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=over_lap, length_function=len, is_separator_regex=False,)
+    docs = text_splitter.split_documents(documents)
+    
+    # Prepare embedding function
+    _, embedding = config_bedrock(embedding_model_id, model_id, max_tokens, temperature, top_p, top_k)
+    chat = ChatDeepSeek(
+        model=LOCAL_MODEL, 
+        api_key=DEEPSEEK_API_KEY, 
+        base_url=LOCAL_API_URL,
+        max_tokens=4096,
+        temperature=0.01,
+        timeout=None,
+        max_retries=2,
+    )
+    
+    # Try to get vectordb with FAISS
+    db = FAISS.from_documents(docs, embedding)
+    retriever = db.as_retriever(search_kwargs={"k": doc_num})
+
+
+    def format_docs(docs):
+        return "\n\n".join(doc.page_content for doc in docs)
+
+    messages = [
+        ("system", """Your are a helpful assistant to provide comprehensive and truthful answers to questions, \n
+                    drawing upon all relevant information contained within the specified in {context}. \n 
+                    You add value by analyzing the situation and offering insights to enrich your answer. \n
+                    Simply say I don't know if you can not find any evidence to match the question. \n
+                    """),
+        #MessagesPlaceholder(variable_name="chat_history"),
+        ("human", "{question}"),
+    ]
+    prompt_template = ChatPromptTemplate.from_messages(messages)
+
+    # Reranker
+    compression_retriever = ContextualCompressionRetriever(
+        base_compressor= FlashrankRerank(), base_retriever=retriever
+    )
+
+    rag_chain = (
+        #{"context": compression_retriever | format_docs, "question": RunnablePassthrough()}
+        #| RunnableParallel(answer=hub.pull("rlm/rag-prompt") | chat |format_docs, question=itemgetter("question") ) 
+        RunnableParallel(context=compression_retriever | format_docs, question=RunnablePassthrough() )
+        | prompt_template
+        | chat
+        | StrOutputParser()
+    )
+
+    results = rag_chain.invoke(query)
+    return results
+
 def retrieval_chroma(query, model_id, embedding_model_id:str, chunk_size:int=6000, over_lap:int=600, max_tokens: int=2048, temperature: int=0.01, top_p: float=0.90, top_k: int=25, doc_num: int=3):
 
     # LLM   and  embedding function
@@ -730,7 +790,7 @@ def classify_query2(query: str, modelId: str):
     - Upscale - Enhance or upscale the image for higher resolution.
     - Segmentation - To segment out the objects specified in text and creating masks.
     - Conditioning - Condition the input image and genderate a similiar one guided by the input text.
-    - Virtual Try-on - Virtual try-on demo to showcase on-line fashion styling by selecting a model and a garment.
+    - Virtual Try-on - Explicitly call out virtual fashion demo to showcase on-line fashion styling by selecting a model and a garment.
     - Others - Image understanding and image caption creation.
 Return in the output only one word to represent the top matched type from (IAMGE GENERATION, VIDEO GENERATION, MUSIC GENERATION, BACKGROUND, UPSCALE, SEGMENTATION, CONDITIONING or OTHERS).
 '''

@@ -235,12 +235,13 @@ with st.sidebar:
                                               'us.amazon.nova-micro-v1:0',
                                               'us.amazon.nova-pro-v1:0',
                                               'anthropic.claude-3-5-haiku-20241022-v1:0',
-                                              'anthropic.claude-3-5-sonnet-20241022-v2:0'
+                                              'anthropic.claude-3-5-sonnet-20241022-v2:0',
+                                              'deepseek-ai/DeepSeek-R1-Distill-Llama-70B'
                                              ))
     elif 'Multimodal' in rag_on:
          option = st.selectbox('Choose Model',(
                                                'us.amazon.nova-lite-v1:0',
-                                              'us.amazon.nova-pro-v1:0',
+                                               'us.amazon.nova-pro-v1:0',
                                                'anthropic.claude-3-5-sonnet-20241022-v2:0',
                                                'anthropic.claude-3-haiku-20240307-v1:0'
                                              ))
@@ -268,7 +269,8 @@ with st.sidebar:
                                               'anthropic.claude-3-5-haiku-20241022-v1:0',
                                               'anthropic.claude-3-haiku-20240307-v1:0', 
                                               'anthropic.claude-3-5-sonnet-20241022-v2:0',
-                                              'meta.llama3-3-70b-instruct-v1:0'
+                                              'meta.llama3-3-70b-instruct-v1:0',
+                                              'deepseek-ai/DeepSeek-R1-Distill-Llama-70B'
                                              ))
         
     #if 'Basic' in rag_on or 'Files' in rag_on or 'Multimodal' in rag_on:
@@ -332,8 +334,11 @@ if rag_search:
         #documents, urls = all_search(prompt=prompt, num_results=int(doc_num/2)+1)
         
         if 'claude' in option:
-            #msg = retrieval_faiss(prompt, documents, option, embedding_model_id, max_token, temperature, top_p, top_k, doc_num)
-            msg = retrieval_faiss(prompt, documents, option, embedding_model_id, 6000, 600, max_token, temperature, top_p, top_k, doc_num)
+            msg = retrieval_faiss(prompt, documents, option, embedding_model_id, max_token, temperature, top_p, top_k, doc_num)
+            #msg = retrieval_faiss(prompt, documents, option, embedding_model_id, 6000, 600, max_token, temperature, top_p, top_k, doc_num)
+        elif 'deepseek' in option.lower():
+            msg = st.write_stream(retrieval_faiss_dsr1(prompt, documents, option, embedding_model_id, 6000, 600, max_token, temperature, top_p, top_k, doc_num))
+            #msg = retrieval_faiss_dsr1(prompt, documents, option, embedding_model_id, 6000, 600, max_token, temperature, top_p, top_k, doc_num)
         else:
             msg = retrieval_o1(prompt, documents, option, embedding_model_id, 6000, 600, max_token, temperature, top_p, top_k, doc_num, role_arn=o1_sts_role_arn, region=o1_region)
         msg_footer = f"{msg}\n\n ✧***Sources:***\n\n" + '\n\n\r'.join(urls[0:doc_num])
@@ -367,7 +372,7 @@ elif video_caption:
                 audio_transcribe = answer2.result()
         
             prompt2 = xml_prompt(captions, audio_transcribe, prompt)
-            msg = nova_textGen(option, prompt2, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region=o1_region)
+            msg = nova_textGen(option, prompt2, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region_name=o1_region)
             
         msg += "\n\n 🔊***Audio transcribe:*** " + audio_transcribe + "\n\n ✒︎***Content created by using:*** " + option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms" + f", Tokens In: {tokens}+{estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.messages.append({"role": "assistant", "content": msg})
@@ -460,9 +465,18 @@ elif image_caption or image_argmentation:
                 new_image = Image.open(io.BytesIO(base64.decodebytes(bytes(base64_str, "utf-8"))))
                 st.image(new_image, output_format="png", use_container_width='auto')
             elif 'flux' in prompt.lower():
+                old_prompt = f"rephrase this for text to image generate and drop 'using xxx model': {prompt}"
                 option = 'flux.1.dev' #'stability.stable-diffusion-xl-v1:0' # Or 'amazon.titan-image-generator-v1'
+                new_prompt = str(bedrock_textGen(option, old_prompt, max_token, temperature, top_p, top_k, stop_sequences))
                 url = "http://video.cavatar.info:8080/generate?prompt="
-                new_image = gen_photo_bytes(prompt, url)
+                new_image = gen_photo_bytes(new_prompt, url)
+                st.image(new_image, output_format="png", use_container_width='auto')
+            elif 'alpha' in prompt.lower():
+                url = "http://video.cavatar.info:8085/generate?prompt="
+                old_prompt = f"rephrase this for text to image generate and drop 'using xxx model': {prompt}"
+                option = 'flux.1.alpha' #'stability.stable-diffusion-xl-v1:0' # Or 'amazon.titan-image-generator-v1'
+                new_prompt = str(bedrock_textGen(option, old_prompt, max_token, temperature, top_p, top_k, stop_sequences))
+                new_image = gen_photo_bytes(new_prompt, url)
                 st.image(new_image, output_format="png", use_container_width='auto')
             else:
                 option = 'amazon.nova-canvas-v1:0'
@@ -489,6 +503,13 @@ elif image_caption or image_argmentation:
                     msg_footer = "\n\n ✒︎***Content created by using:*** "+ option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms"  
                 else:
                     msg_footer = f"Error generating video from {url}"
+            elif 'luma' in prompt.lower():
+                option = 'luma.ray-v2:0'
+                file_name = t2v_luma(video_prompt=prompt, model_id=option, role_arn=o1_sts_role_arn, v_length=6, region="us-west-2")
+                with open(file_name, 'rb') as file:
+                    mp4_bytes = file.read()
+                    st.video(mp4_bytes)
+                    msg_footer = "\n\n ✒︎***Content created by using:*** "+ option + f", Latency: {(time.time() - start_time) * 1000:.2f} ms"
             else:
                 option = 'amazon.nova-reel-v1:0'
                 file_name = t2v_reel(video_prompt=prompt, model_id=option, role_arn=o1_sts_role_arn, v_length=6, region=o1_region)
@@ -559,7 +580,7 @@ elif talk_2_pdf:
         if 'claude' in option:
             msg = bedrock_textGen(option, prompt2, max_token, temperature, top_p, top_k, stop_sequences)
         else:
-            msg = nova_textGen(option, prompt2, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region=o1_region)
+            msg = nova_textGen(option, prompt2, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region_name=o1_region)
         msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms, Tokens In: {estimate_tokens(prompt2, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.messages.append({"role": "assistant", "content": msg_footer})
         st.chat_message("ai", avatar='🗂️').write(msg_footer)
@@ -629,6 +650,10 @@ elif (record_audio_bytes and len(voice_prompt) > 3):
             msg=bedrock_textGen_cris(option, prompt, max_token, temperature, top_p, top_k, region_name=llama33_70b_region)
             msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms"
             st.write(msg_footer)
+        elif 'deepseek' in option.lower():
+            msg = st.write_stream(local_openai_textGen_streaming(option, prompt, max_token, temperature, top_p, top_k))
+            #msg_footer =f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms, {reasoning_usage}"
+            #st.write(msg_footer)
         else:
             msg=str(bedrock_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences))
             msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms"
@@ -666,19 +691,29 @@ else:
         #action = classify_query2(prompt, 'anthropic.claude-3-haiku-20240307-v1:0')
         if 'nova' in option.lower():
             msg=nova_textGen(option, prompt, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region_name=o1_region)
+        elif 'deepseek' in option.lower():
+            if top_k < 21:
+                msg = st.write_stream(local_openai_textGen_streaming(option, prompt, max_token, temperature, top_p, top_k))
+                reasoning_usage = ''
+            else:
+                msg, reasoning_usage = local_openai_textGen(option, prompt, max_token, temperature, top_p, top_k)
         elif 'llama3-3' in option.lower():
-            msg=bedrock_textGen_cris(option, prompt, max_token, temperature, top_p, top_k, region_name=llama33_70b_region)
+            msg = bedrock_textGen_cris(option, prompt, max_token, temperature, top_p, top_k, region_name=llama33_70b_region)
         else:
-            msg=str(bedrock_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences))
+            msg = str(bedrock_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences))
         #except:
         #    msg = "Server error. Check the model access permision"
         #    pass
         if 'o1' in option:
             msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms, Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}, Reasoning tokens: {reasoning_token}"
+        elif 'deepseek' in option.lower():
+            if top_k < 21:
+                msg_footer = ''
         else:
             msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms, Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.messages.append({"role": "assistant", "content": msg_footer})
-        st.chat_message("ai", avatar='🤵').write(msg_footer)
+        if len(msg_footer) > 2:
+            st.chat_message("ai", avatar='🤵').write(msg_footer)
         # Ouptut TTS
         if msg is not None and len(msg)> 2:
             st.audio(get_polly_tts(msg))
