@@ -785,6 +785,74 @@ def bedrock_textGen_converse(model_id, prompt, max_tokens, temperature, top_p, t
     # Extract the content
     return  data['content']
 
+## With Claude 3.7 plus thinking
+def bedrock_textGen_thinking(model_id, prompt, max_tokens):
+    system_prompt = [{"text": "You're a helpful AI assistant."}] 
+    messages = [
+        {
+            "role": "user",
+            "content": [{"text": prompt}]
+        }
+    ]
+    
+    # Base request parameters
+    request_params = {
+        "modelId": model_id,
+        "messages": messages,
+        "system": system_prompt,
+        "inferenceConfig": {
+            "temperature": 1.0,
+            "maxTokens": max_tokens
+        }
+    }
+    
+    request_params["additionalModelRequestFields"] = {
+        "reasoning_config": {
+            "type": "enabled",
+            "budget_tokens": int(max_tokens*0.75)
+        }
+    }
+    
+    #body_bytes = json.dumps(payload['body']).encode('utf-8')
+    response = bedrock_client.converse(**request_params)
+    return response['output']['message']['content'][1]['text']
+
+
+def bedrock_textGen_thinking_stream(model_id, prompt, max_tokens, temperature, top_p, top_k, stop_sequences):
+    system_prompt = [{"text": "You're a helpful AI assistant."}] 
+    messages = [
+        {
+            "role": "user",
+            "content": [{"text": prompt}]
+        }
+    ]
+    
+    # Base request parameters
+    request_params = {
+        "modelId": model_id,
+        "messages": messages,
+        "system": system_prompt,
+        "inferenceConfig": {
+            "temperature": 1.0,
+            "maxTokens": max_tokens
+        }
+    }
+    
+    request_params["additionalModelRequestFields"] = {
+        "reasoning_config": {
+            "type": "enabled",
+            "budget_tokens": int(max_tokens*0.75)
+        }
+    }
+    
+    #body_bytes = json.dumps(payload['body']).encode('utf-8')
+    response = bedrock_client.converse_stream(**request_params)
+    for chunk in response["stream"]:
+        print(chunk)
+        if "contentBlockDelta" in chunk:
+            text = chunk["contentBlockDelta"]["delta"]["text"]
+            yield f"{text}"
+            
 
 ## TTS
 def get_polly_tts(msg: str):

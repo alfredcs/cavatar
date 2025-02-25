@@ -237,14 +237,17 @@ with st.sidebar:
                                               'us.amazon.nova-pro-v1:0',
                                               'anthropic.claude-3-5-haiku-20241022-v1:0',
                                               'anthropic.claude-3-5-sonnet-20241022-v2:0',
-                                              'deepseek-ai/DeepSeek-R1-Distill-Llama-70B'
+                                              'us.anthropic.claude-3-7-sonnet-20250219-v1:0',
+                                              'deepseek-ai/DeepSeek-R1' #-Distill-Llama-70B'
                                              ))
     elif 'Multimodal' in rag_on:
          option = st.selectbox('Choose Model',(
                                                'us.amazon.nova-lite-v1:0',
                                                'us.amazon.nova-pro-v1:0',
+                                               'us.anthropic.claude-3-7-sonnet-20250219-v1:0',
                                                'anthropic.claude-3-5-sonnet-20241022-v2:0',
-                                               'anthropic.claude-3-haiku-20240307-v1:0'
+                                               'anthropic.claude-3-haiku-20240307-v1:0',
+                                               'flux1.dev.outfit'
                                              ))
     elif 'Files' in rag_on:
          option = st.selectbox('Choose Model',(
@@ -253,7 +256,8 @@ with st.sidebar:
                                               'us.amazon.nova-pro-v1:0',
                                                 'anthropic.claude-3-5-haiku-20241022-v1:0',
                                                 'anthropic.claude-3-haiku-20240307-v1:0', 
-                                                'anthropic.claude-3-5-sonnet-20241022-v2:0'
+                                                'anthropic.claude-3-5-sonnet-20241022-v2:0',
+                                                #'deepseek-ai/DeepSeek-R1' #-Distill-Llama-70B'
                                              ))
     elif 'Blog' in rag_on:
         option = st.selectbox('Choose Model',('anthropic.claude-3-5-haiku-20241022-v1:0',
@@ -267,11 +271,11 @@ with st.sidebar:
                                               'us.amazon.nova-lite-v1:0',
                                               'us.amazon.nova-micro-v1:0',
                                               'us.amazon.nova-pro-v1:0',
-                                              'anthropic.claude-3-5-haiku-20241022-v1:0',
-                                              'anthropic.claude-3-haiku-20240307-v1:0', 
+                                              'us.anthropic.claude-3-7-sonnet-20250219-v1:0',
+                                              'anthropic.claude-3-5-haiku-20241022-v1:0', 
                                               'anthropic.claude-3-5-sonnet-20241022-v2:0',
                                               'meta.llama3-3-70b-instruct-v1:0',
-                                              'deepseek-ai/DeepSeek-R1-Distill-Llama-70B'
+                                              'deepseek-ai/DeepSeek-R1' #-Distill-Llama-70B'
                                              ))
         
     #if 'Basic' in rag_on or 'Files' in rag_on or 'Multimodal' in rag_on:
@@ -312,6 +316,7 @@ with st.sidebar:
 # Streamlist Body
 ###
 start_time = time.time()
+non_streaming = True
 if "messages" not in st.session_state:
     st.session_state["messages"] = [{"role": "assistant", "content": "I am your assistant. How can I help today?"}]
 
@@ -341,10 +346,10 @@ if rag_search:
             #msg = retrieval_faiss(prompt, documents, option, embedding_model_id, 6000, 600, max_token, temperature, top_p, top_k, doc_num)
         elif 'deepseek' in option.lower():
             #msg = st.write_stream(retrieval_faiss_dsr1(prompt, documents, option, embedding_model_id, 6000, 600, max_token, temperature, top_p, top_k, doc_num))
-            msg = retrieval_faiss_dsr1(prompt, documents, option, embedding_model_id, 6000, 600, max_token, temperature, top_p, top_k, doc_num)
+            msg = retrieval_faiss_dsr1(prompt, documents, option, embedding_model_id, 2000, 200, max_token, temperature, top_p, top_k, doc_num)
             #msg_footer = f"Powered by deepseek"
         else:
-            msg = retrieval_o1(prompt, documents, option, embedding_model_id, 6000, 600, max_token, temperature, top_p, top_k, doc_num, role_arn=o1_sts_role_arn, region=o1_region)
+            msg = retrieval_o1(prompt, documents, option, embedding_model_id, 4000, 400, max_token, temperature, top_p, top_k, doc_num, role_arn=o1_sts_role_arn, region=o1_region)
 
         msg_footer = f"{msg}\n\n ✧***Sources:***\n\n" + '\n\n\r'.join(urls[0:doc_num])
         msg_footer += f"\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms, Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
@@ -416,7 +421,11 @@ elif image_caption or image_argmentation:
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.chat_message("user").write(prompt)
         
-        action = classify_query2(prompt, 'anthropic.claude-3-haiku-20240307-v1:0')
+        if 'flux1' in option.lower():
+            action = 'image generation'
+        else:
+            action = classify_query2(prompt, 'anthropic.claude-3-haiku-20240307-v1:0')
+        
         if 'upscale' in action.lower():
             try:
                 new_image = upscale_image_bytes(bytes_data, prompt)
@@ -469,12 +478,12 @@ elif image_caption or image_argmentation:
                 base64_str = bedrock_imageGen(option, prompt, iheight=1024, iwidth=1024, src_image=None, image_quality='premium', image_n=1, cfg=random.uniform(3.2, 9.0), seed=random.randint(0, 500000))
                 new_image = Image.open(io.BytesIO(base64.decodebytes(bytes(base64_str, "utf-8"))))
                 st.image(new_image, output_format="png", use_container_width='auto')
-            elif 'flux' in prompt.lower():
-                old_prompt = f"rephrase this for text to image generate and drop 'using xxx model': {prompt}"
-                option = 'flux.1.dev' #'stability.stable-diffusion-xl-v1:0' # Or 'amazon.titan-image-generator-v1'
-                new_prompt = str(bedrock_textGen(option, old_prompt, max_token, temperature, top_p, top_k, stop_sequences))
+            elif 'flux' in option.lower():
+                #old_prompt = f"rephrase the following sentences to remove 'using flux xxx model to generate an imag' only and keep others as is': {prompt}"
+                #option = 'flux.1.dev' #'stability.stable-diffusion-xl-v1:0' # Or 'amazon.titan-image-generator-v1'
+                #new_prompt = str(bedrock_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences))
                 url = "http://video.cavatar.info:8080/generate?prompt="
-                new_image = gen_photo_bytes(new_prompt, url)
+                new_image = gen_photo_bytes(prompt, url)
                 st.image(new_image, output_format="png", use_container_width='auto')
             elif 'alpha' in prompt.lower():
                 url = "http://video.cavatar.info:8085/generate?prompt="
@@ -584,6 +593,8 @@ elif talk_2_pdf:
         prompt2 = f"{prompt}. Your answer should be strictly based on the context in {xml_texts}."
         if 'claude' in option:
             msg = bedrock_textGen(option, prompt2, max_token, temperature, top_p, top_k, stop_sequences)
+        elif 'deepseek' in option.lower():
+            msg = local_openai_textGen(option, prompt2, max_token, temperature, top_p, top_k)
         else:
             msg = nova_textGen(option, prompt2, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region_name=o1_region)
         msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms, Tokens In: {estimate_tokens(prompt2, method='max')}, Out: {estimate_tokens(msg, method='max')}"
@@ -659,6 +670,7 @@ elif (record_audio_bytes and len(voice_prompt) > 3):
             msg = st.write_stream(local_openai_textGen_streaming(option, prompt, max_token, temperature, top_p, top_k))
             #msg_footer =f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms, {reasoning_usage}"
             #st.write(msg_footer)
+            non_streaming = False
         else:
             msg=str(bedrock_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences))
             msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms"
@@ -683,7 +695,7 @@ elif blog_writer:
         msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, latency: {(time.time() - start_time) * 1000:.2f} ms"
         st.session_state.messages.append({"role": "assistant", "content": msg_footer})
         st.chat_message("ai", avatar='📝').write(msg_footer)
-        if msg is not None and len(msg)> 2:
+        if msg is not None and len(msg)> 2 and non_streaming:
             st.audio(get_polly_tts(msg[:1024]))
 ###
 # The rest
@@ -699,11 +711,14 @@ else:
         elif 'deepseek' in option.lower():
             if top_k < 21:
                 msg = st.write_stream(local_openai_textGen_streaming(option, prompt, max_token, temperature, top_p, top_k))
-                reasoning_usage = ''
+                #reasoning_usage = ''
+                non_streaming = False
             else:
                 msg, reasoning_usage = local_openai_textGen(option, prompt, max_token, temperature, top_p, top_k)
         elif 'llama3-3' in option.lower():
             msg = bedrock_textGen_cris(option, prompt, max_token, temperature, top_p, top_k, region_name=llama33_70b_region)
+        elif 'claude-3-7' in option.lower():
+             msg = bedrock_textGen_thinking(option, prompt, max_token)
         else:
             msg = str(bedrock_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences))
         #except:
@@ -711,14 +726,13 @@ else:
         #    pass
         if 'o1' in option:
             msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms, Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}, Reasoning tokens: {reasoning_token}"
-        elif 'deepseek' in option.lower():
-            if top_k < 21:
-                msg_footer = ''
+        elif 'deepseek' in option.lower() and top_k < 21:
+                msg_footer = ' '
         else:
             msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms, Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
         st.session_state.messages.append({"role": "assistant", "content": msg_footer})
         if len(msg_footer) > 2:
             st.chat_message("ai", avatar='🤵').write(msg_footer)
         # Ouptut TTS
-        if msg is not None and len(msg)> 2:
+        if msg is not None and len(msg)> 2 and non_streaming:
             st.audio(get_polly_tts(msg))
