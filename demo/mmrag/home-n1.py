@@ -255,7 +255,7 @@ with st.sidebar:
                                               'us.amazon.nova-micro-v1:0',
                                               'us.amazon.nova-pro-v1:0',
                                                 'anthropic.claude-3-5-haiku-20241022-v1:0',
-                                                'anthropic.claude-3-haiku-20240307-v1:0', 
+                                                'us.anthropic.claude-3-7-sonnet-20250219-v1:0',
                                                 'anthropic.claude-3-5-sonnet-20241022-v2:0',
                                                 #'deepseek-ai/DeepSeek-R1' #-Distill-Llama-70B'
                                              ))
@@ -671,6 +671,10 @@ elif (record_audio_bytes and len(voice_prompt) > 3):
             #msg_footer =f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms, {reasoning_usage}"
             #st.write(msg_footer)
             non_streaming = False
+        elif 'claude-3-7' in option.lower():
+            msg = st.write_stream(bedrock_textGen_thinking_stream(option, prompt, max_token))
+            #msg = bedrock_textGen_thinking(option, prompt, max_token)
+            #non_streaming = False
         else:
             msg=str(bedrock_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences))
             msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms"
@@ -682,7 +686,7 @@ elif (record_audio_bytes and len(voice_prompt) > 3):
         msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms"
         #st.session_state.messages.append({"role": "assistant", "content": msg_footer})
         #st.chat_message("ai", avatar='🎙️').write(msg_footer)
-        #st.write(msg_footer)
+        st.write(msg_footer)
         # Ouptut TTS
         if msg is not None and len(msg)> 2:
             st.audio(get_polly_tts(msg))

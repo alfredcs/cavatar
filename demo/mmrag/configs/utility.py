@@ -30,6 +30,7 @@ from langchain_core.runnables.config import RunnableConfig
 from langchain_core.runnables import RunnableParallel, Runnable, RunnableLambda, RunnablePassthrough
 from langchain.prompts import ChatPromptTemplate
 from langchain_aws import BedrockLLM, ChatBedrock, ChatBedrockConverse
+from anthropic import AnthropicBedrock
 
 config_filename = '.aoss_config.txt'
 suffix = random.randrange(200, 900)
@@ -818,41 +819,49 @@ def bedrock_textGen_thinking(model_id, prompt, max_tokens):
     return response['output']['message']['content'][1]['text']
 
 
-def bedrock_textGen_thinking_stream(model_id, prompt, max_tokens, temperature, top_p, top_k, stop_sequences):
-    system_prompt = [{"text": "You're a helpful AI assistant."}] 
-    messages = [
-        {
-            "role": "user",
-            "content": [{"text": prompt}]
-        }
-    ]
-    
-    # Base request parameters
-    request_params = {
-        "modelId": model_id,
-        "messages": messages,
-        "system": system_prompt,
-        "inferenceConfig": {
-            "temperature": 1.0,
-            "maxTokens": max_tokens
-        }
-    }
-    
-    request_params["additionalModelRequestFields"] = {
-        "reasoning_config": {
+def bedrock_textGen_thinking_stream(model_id, prompt, max_tokens):
+    anthropic_client = AnthropicBedrock(aws_region=region_name)
+    with anthropic_client.messages.stream(
+        model=model_id,
+        max_tokens=max_tokens,
+        thinking={
             "type": "enabled",
             "budget_tokens": int(max_tokens*0.75)
-        }
-    }
-    
-    #body_bytes = json.dumps(payload['body']).encode('utf-8')
-    response = bedrock_client.converse_stream(**request_params)
-    for chunk in response["stream"]:
-        print(chunk)
+        },
+        messages=[{
+            "role": "user",
+            "content": f"+++factCheck +++ScientificAccuracy +++CiteSources {prompt}"
+        }]
+    ) as stream:
+        for event in stream:
+            if event.type == "content_block_start":
+                yield f"{event.content_block.type}\n"
+            elif event.type == "content_block_delta":
+                if event.delta.type == "thinking_delta":
+                    yield event.delta.thinking
+                elif event.delta.type == "text_delta":
+                    yield event.delta.text
+            elif event.type == "content_block_stop":
+               yield f"\n"
+    '''
+    # Process the streaming response chunks
+    for chunk in streaming_response["stream"]:
         if "contentBlockDelta" in chunk:
-            text = chunk["contentBlockDelta"]["delta"]["text"]
-            yield f"{text}"
+            delta = chunk["contentBlockDelta"]["delta"]
             
+            # Handle reasoning content (displayed in green)
+            if "reasoningContent" in delta:
+                if "text" in delta["reasoningContent"]:
+                    reasoning_text = delta["reasoningContent"]["text"]
+                    yield f"\033[92m {reasoning_text} \033[0m"
+                else:
+                    yield ""
+            
+            # Handle regular text content
+            if "text" in delta:
+                text = delta["text"]
+                yield text
+    '''     
 
 ## TTS
 def get_polly_tts(msg: str):
