@@ -667,14 +667,14 @@ elif (record_audio_bytes and len(voice_prompt) > 3):
             msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms"
             st.write(msg_footer)
         elif 'deepseek' in option.lower():
-            msg = st.write_stream(local_openai_textGen_streaming(option, prompt, max_token, temperature, top_p, top_k))
+            st.write_stream(local_openai_textGen_streaming(option, prompt, max_token, temperature, top_p, top_k))
             #msg_footer =f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms, {reasoning_usage}"
             #st.write(msg_footer)
             non_streaming = False
         elif 'claude-3-7' in option.lower():
-            msg = st.write_stream(bedrock_textGen_thinking_stream(option, prompt, max_token))
+            st.write_stream(bedrock_textGen_thinking_stream(option, prompt, max_token))
             #msg = bedrock_textGen_thinking(option, prompt, max_token)
-            #non_streaming = False
+            non_streaming = False
         else:
             msg=str(bedrock_textGen(option, prompt, max_token, temperature, top_p, top_k, stop_sequences))
             msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms"
@@ -713,8 +713,8 @@ else:
         if 'nova' in option.lower():
             msg=nova_textGen(option, prompt, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region_name=o1_region)
         elif 'deepseek' in option.lower():
-            if top_k < 21:
-                msg = st.write_stream(local_openai_textGen_streaming(option, prompt, max_token, temperature, top_p, top_k))
+            if top_k > 20:
+                st.write_stream(local_openai_textGen_streaming(option, prompt, max_token, temperature, top_p, top_k))
                 #reasoning_usage = ''
                 non_streaming = False
             else:
@@ -730,11 +730,11 @@ else:
         #    pass
         if 'o1' in option:
             msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms, Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}, Reasoning tokens: {reasoning_token}"
-        elif 'deepseek' in option.lower() and top_k < 21:
-                msg_footer = ' '
+        elif 'deepseek' in option.lower() and not non_streaming:
+            msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms"
         else:
             msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms, Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
-        st.session_state.messages.append({"role": "assistant", "content": msg_footer})
+        #st.session_state.messages.append({"role": "assistant", "content": msg_footer})
         if len(msg_footer) > 2:
             st.chat_message("ai", avatar='🤵').write(msg_footer)
         # Ouptut TTS

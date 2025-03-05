@@ -290,7 +290,7 @@ def is_pdf(file_path):
 
 # ---- Search arxiv -----
 #--- Configure Bedrock -----
-def config_bedrock(embedding_model_id, model_id, max_tokens, temperature, top_p, top_k):
+def config_bedrock(embedding_model_id, model_id, max_tokens, temperature, top_p, top_k):   
     bedrock_client = boto3.client('bedrock-runtime')
     embedding_bedrock = BedrockEmbeddings(client=bedrock_client, model_id=embedding_model_id)
     model_kwargs =  { 
@@ -435,7 +435,7 @@ def retrieval_faiss(query, documents, model_id, embedding_model_id:str, chunk_si
     docs = text_splitter.split_documents(documents)
     
     # Prepare embedding function
-    if 'meta' in model_id.lower():
+    if 'meta' in model_id.lower() or 'claude' in model_id.lower():
         chat, embedding = config_bedrock_converse(embedding_model_id, model_id, max_tokens, temperature, top_p)
     else:
         chat, embedding = config_bedrock(embedding_model_id, model_id, max_tokens, temperature, top_p, top_k)

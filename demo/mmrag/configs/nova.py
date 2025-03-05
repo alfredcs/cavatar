@@ -933,6 +933,7 @@ def local_openai_textGen(model_id: str, prompt: str, max_token: int, temperature
 def local_openai_textGen_streaming(model_id: str, prompt: str, max_token: int, temperature: float, top_p: float, top_k: int):
     openai_api_key = "EMPTY"
     openai_api_base = "http://agent.cavatar.info:8080/v1"
+    #openai_api_base = "http://agent.cavatar.info:8081/v1"
     start_time = datetime.datetime.now()
     
     client = OpenAI(
@@ -954,7 +955,7 @@ def local_openai_textGen_streaming(model_id: str, prompt: str, max_token: int, t
     for chunk in chat_response:
         yield chunk.choices[0].delta.content #, end="", flush=True)
 
-    yield f"\n\n ✒︎***Content created by using:*** {model_id}, latency: {str((datetime.datetime.now() - start_time)).replace('0:00:', '')} sec" # * 1000:.2f} ms"
+    #yield f"\n\n ✒︎***Content created by using:*** {model_id}, latency: {str((datetime.datetime.now() - start_time)).replace('0:00:', '')} sec" # * 1000:.2f} ms"
     
 ###
 # Main
