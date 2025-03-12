@@ -863,6 +863,48 @@ def bedrock_textGen_thinking_stream(model_id, prompt, max_tokens):
                 yield text
     '''     
 
+def deepseek_streaming(model_id, prompt, max_tokens, temperature, top_p):
+    conversation = [
+        {
+            "role": "user",
+            "content": [{"text": prompt}],
+        }
+    ]
+    streaming_response = bedrock_client.converse_stream(
+            modelId=model_id,
+            messages=conversation,
+            inferenceConfig={"maxTokens": max_tokens, "temperature": temperature, "topP":top_p},
+        )
+    
+    # Extract and print the streamed response text in real-time.
+    for chunk in streaming_response["stream"]:
+        if "contentBlockDelta" in chunk :
+            try:
+                yield chunk["contentBlockDelta"]["delta"]['reasoningContent']['text']
+            except:
+                yield chunk['contentBlockDelta']['delta']['text']
+
+'''
+def deepseek_reasoning_gen(model_id, prompt, max_tokens, temperature, top_p):
+    llm_chat_conv = ChatBedrockConverse(
+        model=model_id,
+        client=bedrock_client,
+        temperature=temperature,
+        top_p=top_p,
+        max_tokens=max_tokens,
+        region_name=region_name,
+        additional_model_request_fields=think_params if "claude-3-7" in model_id else None,
+    )
+    # Extract and print the streamed response text in real-time.
+    stream = llm_chat_conv.stream(prompt)
+    for chunk in stream:
+        try:
+            yield chunk.content[1]['reasoning_content']['text']
+        except:
+            pass
+        yield chunk.content[0]['text']
+'''
+
 ## TTS
 def get_polly_tts(msg: str):
     language = detect(msg) 

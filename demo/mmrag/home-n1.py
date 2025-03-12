@@ -235,6 +235,7 @@ with st.sidebar:
                                               'us.amazon.nova-lite-v1:0',
                                               'us.amazon.nova-micro-v1:0',
                                               'us.amazon.nova-pro-v1:0',
+                                              'us.deepseek.r1-v1:0',
                                               'anthropic.claude-3-5-haiku-20241022-v1:0',
                                               'anthropic.claude-3-5-sonnet-20241022-v2:0',
                                               'us.anthropic.claude-3-7-sonnet-20250219-v1:0',
@@ -254,6 +255,7 @@ with st.sidebar:
                                                'us.amazon.nova-lite-v1:0',
                                               'us.amazon.nova-micro-v1:0',
                                               'us.amazon.nova-pro-v1:0',
+                                              'us.deepseek.r1-v1:0',
                                                 'anthropic.claude-3-5-haiku-20241022-v1:0',
                                                 'us.anthropic.claude-3-7-sonnet-20250219-v1:0',
                                                 'anthropic.claude-3-5-sonnet-20241022-v2:0',
@@ -271,6 +273,7 @@ with st.sidebar:
                                               'us.amazon.nova-lite-v1:0',
                                               'us.amazon.nova-micro-v1:0',
                                               'us.amazon.nova-pro-v1:0',
+                                              'us.deepseek.r1-v1:0',
                                               'us.anthropic.claude-3-7-sonnet-20250219-v1:0',
                                               'anthropic.claude-3-5-haiku-20241022-v1:0', 
                                               'anthropic.claude-3-5-sonnet-20241022-v2:0',
@@ -666,10 +669,13 @@ elif (record_audio_bytes and len(voice_prompt) > 3):
             msg=bedrock_textGen_cris(option, prompt, max_token, temperature, top_p, top_k, region_name=llama33_70b_region)
             msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms"
             st.write(msg_footer)
-        elif 'deepseek' in option.lower():
+        elif 'deepseek-ai' in option.lower():
             st.write_stream(local_openai_textGen_streaming(option, prompt, max_token, temperature, top_p, top_k))
             #msg_footer =f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms, {reasoning_usage}"
             #st.write(msg_footer)
+            non_streaming = False
+        elif 'deepseek' in option.lower():
+            st.write_stream(deepseek_streaming(option, prompt, max_token, temperature, top_p))
             non_streaming = False
         elif 'claude-3-7' in option.lower():
             st.write_stream(bedrock_textGen_thinking_stream(option, prompt, max_token))
@@ -714,8 +720,9 @@ else:
             msg=nova_textGen(option, prompt, max_token, temperature, top_p, top_k, role_arn=o1_sts_role_arn, region_name=o1_region)
         elif 'deepseek' in option.lower():
             if top_k > 20:
-                st.write_stream(local_openai_textGen_streaming(option, prompt, max_token, temperature, top_p, top_k))
+                st.write_stream(deepseek_streaming(option, prompt, max_token, temperature, top_p))
                 #reasoning_usage = ''
+                msg = ''
                 non_streaming = False
             else:
                 msg, reasoning_usage = local_openai_textGen(option, prompt, max_token, temperature, top_p, top_k)
@@ -734,7 +741,7 @@ else:
             msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms"
         else:
             msg_footer = f"{msg}\n\n ✒︎***Content created by using:*** {option}, Latency: {(time.time() - start_time) * 1000:.2f} ms, Tokens In: {estimate_tokens(prompt, method='max')}, Out: {estimate_tokens(msg, method='max')}"
-        #st.session_state.messages.append({"role": "assistant", "content": msg_footer})
+        st.session_state.messages.append({"role": "assistant", "content": msg_footer})
         if len(msg_footer) > 2:
             st.chat_message("ai", avatar='🤵').write(msg_footer)
         # Ouptut TTS
